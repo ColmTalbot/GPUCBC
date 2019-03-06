@@ -12,6 +12,11 @@ from bilby.core.utils import create_frequency_series
 GAMMA_E = lal.GAMMA
 
 class TF2(object):
+    """
+    A toy copy of the TaylorF2 waveform.
+
+    This has not been tested. Beware.
+    """
     
     def __init__(self, m1, m2, chi1, chi2):
         m1 *= lal.MSUN_SI * lal.G_SI / lal.C_SI**3
@@ -39,13 +44,13 @@ class TF2(object):
         hoff = (
             self.amplitude(frequency_array) *
             xp.exp(-1j * self.phase(frequency_array)))
-        hoff[in_band] = 0
+        hoff[~in_band] = 0
         return hoff
     
     def amplitude(self, frequency_array):
         frequency_array = self.mtot * frequency_array
         a_0 = (
-          (2 * self.eta / 3 * np.pi**(1 / 3))**0.5 * frequency_array**(-7 / 6))
+          (2 * self.eta / 3 / np.pi**(1 / 3))**0.5 * frequency_array**(-7 / 6))
         amp = 0
         for ii in range(7):
             amp += self.amp_term(ii) * (np.pi * frequency_array)**(ii / 3)
@@ -66,35 +71,35 @@ class TF2(object):
     def phase_term(self, ii, frequency_array):
         if ii == 0:
             return self.phi_0(frequency_array)
-        if ii == 1:
+        elif ii == 1:
             return self.phi_1(frequency_array)
-        if ii == 2:
+        elif ii == 2:
             return self.phi_2(frequency_array)
-        if ii == 3:
+        elif ii == 3:
             return self.phi_3(frequency_array)
-        if ii == 4:
+        elif ii == 4:
             return self.phi_4(frequency_array)
-        if ii == 5:
+        elif ii == 5:
             return self.phi_5(frequency_array)
-        if ii == 6:
+        elif ii == 6:
             return self.phi_6(frequency_array)
-        if ii == 7:
+        elif ii == 7:
             return self.phi_7(frequency_array)
         
     def amp_term(self, ii):
         if ii == 0:
             return self.amp_0()
-        if ii == 1:
+        elif ii == 1:
             return self.amp_1()
-        if ii == 2:
+        elif ii == 2:
             return self.amp_2()
-        if ii == 3:
+        elif ii == 3:
             return self.amp_3()
-        if ii == 4:
+        elif ii == 4:
             return self.amp_4()
-        if ii == 5:
+        elif ii == 5:
             return self.amp_5()
-        if ii == 6:
+        elif ii == 6:
             return self.amp_6()
     
     def phi_0(self, frequency_array):
