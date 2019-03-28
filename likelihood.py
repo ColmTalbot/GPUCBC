@@ -114,7 +114,7 @@ class CUPYGravitationalWaveTransient(Likelihood):
                     self.parameters['ra'], self.parameters['dec'],
                     self.parameters['geocent_time']))
             
-            signal_ifo *= xp.exp(-2j * time_delay * self.frequency_array)
+            signal_ifo *= xp.exp(-2j * np.pi * time_delay * self.frequency_array)
             
             d_inner_h += xp.sum(xp.conj(signal_ifo) * self.strain[name] /
                                 self.psds[name])
