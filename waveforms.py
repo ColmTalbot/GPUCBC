@@ -3,7 +3,7 @@ import numpy as np
 try:
     import cupy as xp
 except ImportError:
-    xp  = np
+    xp = np
 
 import lal
 from bilby.gw.conversion import convert_to_lal_binary_neutron_star_parameters
@@ -11,13 +11,14 @@ from bilby.core.utils import create_frequency_series
 
 GAMMA_E = lal.GAMMA
 
+
 class TF2(object):
     """
     A toy copy of the TaylorF2 waveform.
 
     This has not been tested. Beware.
     """
-    
+
     def __init__(self, m1, m2, chi1, chi2):
         m1 *= lal.MSUN_SI * lal.G_SI / lal.C_SI**3
         m2 *= lal.MSUN_SI * lal.G_SI / lal.C_SI**3
@@ -38,15 +39,15 @@ class TF2(object):
         m2 = 0.5 * (1.0 - seta)
         self.chi = (m1**2 * self.chi1 + m2**2 * self.chi2)
         self.fisco = 6**(-1.5) / np.pi / self.mtot
-        
+
     def __call__(self, frequency_array, tc=0, phi_c=0):
-        in_band = frequency_array <=self.fisco
+        in_band = frequency_array <= self.fisco
         hoff = (
             self.amplitude(frequency_array) *
             xp.exp(-1j * self.phase(frequency_array)))
         hoff[~in_band] = 0
         return hoff
-    
+
     def amplitude(self, frequency_array):
         frequency_array = self.mtot * frequency_array
         a_0 = (
@@ -55,7 +56,6 @@ class TF2(object):
         for ii in range(7):
             amp += self.amp_term(ii) * (np.pi * frequency_array)**(ii / 3)
         return amp * a_0 / 3.63082874e+23 / 0.43307112  # kludge amplitude
-
 
     def phase(self, frequency_array, tc=0, phi_c=0):
         phi = - phi_c - 4 * np.pi / 3
@@ -85,7 +85,7 @@ class TF2(object):
             return self.phi_6(frequency_array)
         elif ii == 7:
             return self.phi_7(frequency_array)
-        
+
     def amp_term(self, ii):
         if ii == 0:
             return self.amp_0()
@@ -101,7 +101,7 @@ class TF2(object):
             return self.amp_5()
         elif ii == 6:
             return self.amp_6()
-    
+
     def phi_0(self, frequency_array):
         return 1
 
@@ -154,7 +154,7 @@ class TF2(object):
                   1042165 * self.eta**2 / 3024 +
                   5345 * self.eta**3 / 36) * self.chis
         return phase
-    
+
     def amp_0(self):
         return 1
 
@@ -199,15 +199,15 @@ class TF2(object):
             31 * np.pi / 12 + (1614569 / 32256 -
                                165961 * np.pi / 2688) * self.chis)
         return amp
-    
-    
+
+
 class TF2_np(TF2):
-    
+
     def __call__(self, frequency_array, tc=0, phi_c=0):
         return (
             self.amplitude(frequency_array) *
             np.exp(-1j * self.phase(frequency_array)))
-    
+
     def phi_5(self, frequency_array):
         phase = 38645 * np.pi / 756 - 65 * np.pi * self.eta / 9
         phase += self.delta * (-732985 / 2286 - 140 * self.eta / 9) * self.chia
@@ -219,18 +219,18 @@ class TF2_np(TF2):
 
 def call_cupy_tf2(frequency_array, mass_1, mass_2, chi_1, chi_2,
                   luminosity_distance, **kwargs):
-  
+
     waveform_kwargs = dict(reference_frequency=50.0, minimum_frequency=20.0)
     waveform_kwargs.update(kwargs)
-    reference_frequency = waveform_kwargs['reference_frequency']
+    # reference_frequency = waveform_kwargs['reference_frequency']
     minimum_frequency = waveform_kwargs['minimum_frequency']
-    
+
     in_band = frequency_array >= minimum_frequency
-    
+
     frequency_array = xp.asarray(frequency_array)
-    
+
     h_out_of_band = xp.zeros(int(xp.sum(~in_band)))
-    
+
     wf = TF2(mass_1, mass_2, chi_1, chi_2)
     hplus = wf(frequency_array[in_band])
     hplus = xp.hstack([h_out_of_band, hplus]) / luminosity_distance
@@ -250,9 +250,8 @@ class TF2_WFG(object):
         self.frequency_array = xp.asarray(create_frequency_series(
             duration=duration, sampling_frequency=sampling_frequency))
         self.conversion = parameter_conversion
-        
+
     def frequency_domain_strain(self, parameters):
         parameters, _ = self.conversion(parameters.copy())
         parameters.update(self.waveform_arguments)
         return self.fdsm(self.frequency_array, **parameters)
-        
