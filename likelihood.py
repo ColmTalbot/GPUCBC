@@ -75,7 +75,7 @@ class CUPYGravitationalWaveTransient(Likelihood):
                 name = interferometer.name
                 log_l -= 2. / self.duration * xp.sum(
                     xp.abs(self.strain[name]) ** 2 / self.psds[name])
-            self._noise_log_l = log_l
+            self._noise_log_l = float(log_l)
         return self._noise_log_l
 
     def log_likelihood_ratio(self):
