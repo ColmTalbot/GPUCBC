@@ -12,7 +12,8 @@ setuptools.setup(
     long_description=long_description,
     long_description_content_type="text/markdown",
     url="https://github.com/ColmTalbot/GPUCBC",
-    packages=setuptools.find_packages(),
+    packages=['gpucbc'],
+    package_dir={'gpucbc': '.'},
     install_requires=['bilby', 'numpy', 'lalsuite'],
     classifiers=[
         "Programming Language :: Python :: 3",
