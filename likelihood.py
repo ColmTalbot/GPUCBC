@@ -17,15 +17,15 @@ class CUPYGravitationalWaveTransient(Likelihood):
         A likelihood object, able to compute the likelihood of the data given
         some model parameters
 
-        The simplest frequency-domain gravitational wave transient likelihood. Does
-        not include distance/phase marginalization.
+        The simplest frequency-domain gravitational wave transient likelihood.
+        Does not include time/phase marginalization.
 
 
         Parameters
         ----------
         interferometers: list
-            A list of `bilby.gw.detector.Interferometer` instances - contains the
-            detector data and power spectral densities
+            A list of `bilby.gw.detector.Interferometer` instances - contains
+            the detector data and power spectral densities
         waveform_generator: bilby.gw.waveform_generator.WaveformGenerator
             An object which computes the frequency-domain strain of the signal,
             given some set of parameters
@@ -45,8 +45,9 @@ class CUPYGravitationalWaveTransient(Likelihood):
         self.distance_marginalization = distance_marginalization
         if self.distance_marginalization:
             self._setup_distance_marginalization()
-            priors['luminosity_distance'] = priors['luminosity_distance'].minimum
-        
+            priors['luminosity_distance'] = priors[
+                'luminosity_distance'].minimum
+
     def _data_to_gpu(self):
         for ifo in self.interferometers:
             self.psds[ifo.name] = xp.asarray(
@@ -58,7 +59,8 @@ class CUPYGravitationalWaveTransient(Likelihood):
         self.duration = ifo.strain_data.duration
 
     def __repr__(self):
-        return self.__class__.__name__ + '(interferometers={},\n\twaveform_generator={})'\
+        return self.__class__.__name__ + \
+            '(interferometers={},\n\twaveform_generator={})'\
             .format(self.interferometers, self.waveform_generator)
 
     def noise_log_likelihood(self):
@@ -87,9 +89,10 @@ class CUPYGravitationalWaveTransient(Likelihood):
 
         """
         log_l = 0
-        
-        waveform_polarizations = self.waveform_generator.frequency_domain_strain(
-            self.parameters)
+
+        waveform_polarizations = (
+            self.waveform_generator.frequency_domain_strain(
+                self.parameters))
         if waveform_polarizations is None:
             return np.nan_to_num(-np.inf)
 
@@ -104,22 +107,23 @@ class CUPYGravitationalWaveTransient(Likelihood):
                         self.parameters['ra'], self.parameters['dec'],
                         self.parameters['geocent_time'], self.parameters['psi'],
                         mode))
-                    for mode in waveform_polarizations]), axis=0)[
+                for mode in waveform_polarizations]), axis=0)[
                 interferometer.frequency_mask]
-            
+
             time_delay = (
                 self.parameters['geocent_time'] -
                 interferometer.strain_data.start_time +
                 interferometer.time_delay_from_geocenter(
                     self.parameters['ra'], self.parameters['dec'],
                     self.parameters['geocent_time']))
-            
-            signal_ifo *= xp.exp(-2j * np.pi * time_delay * self.frequency_array)
-            
+
+            signal_ifo *= xp.exp(
+                -2j * np.pi * time_delay * self.frequency_array)
+
             d_inner_h += xp.sum(xp.conj(signal_ifo) * self.strain[name] /
                                 self.psds[name])
             h_inner_h += xp.sum(xp.abs(signal_ifo)**2 / self.psds[name])
-            
+
         if self.distance_marginalization:
             log_l = 0
             log_l += (
@@ -131,9 +135,11 @@ class CUPYGravitationalWaveTransient(Likelihood):
                 self.distance_array**2)
             log_l = xp.log(xp.sum(xp.exp(log_l) * self.distance_prior_array))
         else:
-            log_l = - 2 / self.duration * h_inner_h + 4 / self.duration * d_inner_h
+            log_l = (
+                - 2 / self.duration * h_inner_h +
+                4 / self.duration * d_inner_h)
         return float(log_l.real)
-    
+
     def _setup_distance_marginalization(self):
         self.distance_array = np.linspace(
             self.priors['luminosity_distance'].minimum,
