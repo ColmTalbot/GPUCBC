@@ -218,7 +218,7 @@ class TF2_np(TF2):
 
 
 def call_cupy_tf2(frequency_array, mass_1, mass_2, chi_1, chi_2,
-                  luminosity_distance, phi_c, **kwargs):
+                  luminosity_distance, phase, **kwargs):
 
     waveform_kwargs = dict(reference_frequency=50.0, minimum_frequency=20.0)
     waveform_kwargs.update(kwargs)
@@ -232,7 +232,7 @@ def call_cupy_tf2(frequency_array, mass_1, mass_2, chi_1, chi_2,
     h_out_of_band = xp.zeros(int(xp.sum(~in_band)))
 
     wf = TF2(mass_1, mass_2, chi_1, chi_2)
-    hplus = wf(frequency_array[in_band], phi_c=phi_c)
+    hplus = wf(frequency_array[in_band], phi_c=phase)
     hplus = xp.hstack([h_out_of_band, hplus]) / luminosity_distance
     hcross = hplus * xp.exp(-1j * np.pi / 2)
     return dict(plus=hplus, cross=hcross)
