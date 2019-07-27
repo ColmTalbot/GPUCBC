@@ -12,5 +12,5 @@ install:
 script:
 
   - export PYTHONPATH='.'
-  - pytest --cov=gpucbc
+  - pytest test/*.py --cov=gpucbc
   - codeclimate-test-reporter --file .coverage
