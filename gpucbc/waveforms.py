@@ -100,37 +100,43 @@ class TF2(object):
 
     def phase_term(self, ii, frequency_array):
         if ii == 0:
-            return self.phi_0(frequency_array)
+            phase = self.phi_0(frequency_array)
         elif ii == 1:
-            return self.phi_1(frequency_array)
+            phase = self.phi_1(frequency_array)
         elif ii == 2:
-            return self.phi_2(frequency_array)
+            phase = self.phi_2(frequency_array)
         elif ii == 3:
-            return self.phi_3(frequency_array)
+            phase = self.phi_3(frequency_array)
         elif ii == 4:
-            return self.phi_4(frequency_array)
+            phase = self.phi_4(frequency_array)
         elif ii == 5:
-            return self.phi_5(frequency_array)
+            phase = self.phi_5(frequency_array)
         elif ii == 6:
-            return self.phi_6(frequency_array)
+            phase = self.phi_6(frequency_array)
         elif ii == 7:
-            return self.phi_7(frequency_array)
+            phase = self.phi_7(frequency_array)
+        else:
+            phase = 0
+        return phase
 
     def amp_term(self, ii):
         if ii == 0:
-            return self.amp_0()
+            amplitude = self.amp_0()
         elif ii == 1:
-            return self.amp_1()
+            amplitude = self.amp_1()
         elif ii == 2:
-            return self.amp_2()
+            amplitude = self.amp_2()
         elif ii == 3:
-            return self.amp_3()
+            amplitude = self.amp_3()
         elif ii == 4:
-            return self.amp_4()
+            amplitude = self.amp_4()
         elif ii == 5:
-            return self.amp_5()
+            amplitude = self.amp_5()
         elif ii == 6:
-            return self.amp_6()
+            amplitude = self.amp_6()
+        else:
+            amplitude = 0
+        return amplitude
 
     def phi_0(self, frequency_array):
         return 1
