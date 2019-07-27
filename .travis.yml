@@ -12,7 +12,7 @@ install:
 script:
 
   - export PYTHONPATH='.'
-  - pytest --cov=gwpopulation
+  - pytest --cov=gpucbc
   - codeclimate-test-reporter --file .coverage
 
 """
