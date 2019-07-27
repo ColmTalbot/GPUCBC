@@ -5,16 +5,16 @@ with open("README.md", "r") as fh:
 
 setuptools.setup(
     name="gpucbc",
-    version="0.0.1",
+    version="0.1.0",
     author="Colm Talbot",
     author_email="colm.talbot@monash.edu",
     description="GPU enabled CBC parameter estimation",
     long_description=long_description,
     long_description_content_type="text/markdown",
     url="https://github.com/ColmTalbot/GPUCBC",
-    packages=['gpucbc'],
-    package_dir={'gpucbc': '.'},
-    install_requires=['bilby', 'numpy', 'lalsuite'],
+    packages=["gpucbc"],
+    package_dir={"gpucbc": "gpucbc"},
+    install_requires=["numpy", "astropy", "bilby", "lalsuite"],
     classifiers=[
         "Programming Language :: Python :: 3",
         "License :: OSI Approved :: MIT License",
