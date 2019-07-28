@@ -19,18 +19,48 @@ MEGA_PARSEC_SI = constants.pc.si.value * 1e6
 
 class TF2(object):
     """
-    A toy copy of the TaylorF2 waveform.
+    A copy of the TaylorF2 waveform.
 
-    This has not been tested. Beware.
+    Based on the implementation in
+    https://git.ligo.org/lscsoft/lalsuite/blob/master/lalsimulation/src/LALSimInspiralTaylorF2.c
+
+    This has not been rigorously tested.
+
+    Parameters
+    ----------
+    mass_1: float
+        Mass of the more massive object in solar masses.
+    mass_2: float
+        Mass of the less massive object in solar masses.
+    chi_1: float
+        Dimensionless aligned spin of the more massive object.
+    chi_2: float
+        Dimensionless aligned spin of the less massive object.
+    luminosity_distance: float
+        Distance to the binary in Mpc.
+    lambda_1: float
+        Dimensionless tidal deformability of the more massive object.
+    lambda_2: float
+        Dimensionless tidal deformability of the less massive object.
     """
 
-    def __init__(self, mass_1, mass_2, chi_1, chi_2, luminosity_distance):
+    def __init__(self, mass_1, mass_2, chi_1, chi_2, luminosity_distance,
+                 lambda_1=0, lambda_2=0):
         self.mass_1 = mass_1
         self.mass_2 = mass_2
         self.chi_1 = chi_1
         self.chi_2 = chi_2
         self.total_mass = mass_1 + mass_2
         self.symmetric_mass_ratio = mass_1 * mass_2 / self.total_mass ** 2
+
+        self.lambda_1 = float(lambda_1)
+        self.lambda_2 = float(lambda_2)
+        self.param_dict = CreateDict()
+        ls.SimInspiralWaveformParamsInsertTidalLambda1(
+            self.param_dict, self.lambda_1)
+        ls.SimInspiralWaveformParamsInsertTidalLambda2(
+            self.param_dict, self.lambda_2)
+
         self.delta = (self.mass_1 - self.mass_2) / self.total_mass
         self.chis = (self.chi_1 + self.chi_2) / 2
         self.chia = (self.chi_1 - self.chi_2) / 2
@@ -47,11 +77,9 @@ class TF2(object):
         self.luminosity_distance = luminosity_distance / MEGA_PARSEC_SI
 
     def __call__(self, frequency_array, tc=0, phi_c=0):
-        # in_band = frequency_array <= self.fisco
         hoff = self.amplitude(frequency_array) * xp.exp(
-            -1j * self.phase(frequency_array)
+            -1j * self.phase(frequency_array, phi_c=phi_c)
         )
-        # hoff[~in_band] = 0
         return hoff
 
     def amplitude(self, frequency_array):
@@ -80,7 +108,7 @@ class TF2(object):
             np.pi * self.total_mass * SOLAR_RADIUS_IN_S * frequency_array
         ) ** (1 / 3)
         phase_coefficients = ls.SimInspiralTaylorF2AlignedPhasing(
-            self.mass_1, self.mass_2, self.chi_1, self.chi_2, CreateDict()
+            self.mass_1, self.mass_2, self.chi_1, self.chi_2, self.param_dict
         )
         phasing = xp.zeros_like(orbital_speed)
         cumulative_power_frequency = orbital_speed ** -5
@@ -94,7 +122,6 @@ class TF2(object):
             cumulative_power_frequency *= orbital_speed
 
         phasing -= 2 * phi_c + np.pi / 4
-        phasing = phasing % (2 * np.pi)
 
         return phasing
 
@@ -307,6 +334,8 @@ def call_cupy_tf2(
     luminosity_distance,
     theta_jn,
     phase,
+    lambda_1=0,
+    lambda_2=0,
     **kwargs
 ):
 
@@ -320,14 +349,13 @@ def call_cupy_tf2(
 
     h_out_of_band = xp.zeros(int(xp.sum(~in_band)))
 
-    wf = TF2(mass_1, mass_2, chi_1, chi_2, luminosity_distance=luminosity_distance)
-    hplus = wf(frequency_array[in_band], phi_c=phase)
-    hplus = xp.hstack([h_out_of_band, hplus])
-    hcross = hplus * xp.exp(-1j * np.pi / 2)
+    wf = TF2(mass_1, mass_2, chi_1, chi_2, lambda_1=lambda_1, lambda_2=lambda_2,
+             luminosity_distance=luminosity_distance)
+    strain = wf(frequency_array[in_band], phi_c=phase)
+    h_plus = xp.hstack([h_out_of_band, strain]) * (1 + np.cos(theta_jn) ** 2) / 2
+    h_cross = xp.hstack([h_out_of_band, strain]) * xp.exp(-1j * np.pi / 2) * np.cos(theta_jn)
 
-    hplus *= (1 + np.cos(theta_jn) ** 2) / 2
-    hcross *= np.cos(theta_jn)
-    return dict(plus=hplus, cross=hcross)
+    return dict(plus=h_plus, cross=h_cross)
 
 
 class TF2WFG(object):

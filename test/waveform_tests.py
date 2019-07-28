@@ -4,12 +4,13 @@ import unittest
 
 import numpy as np
 import pandas as pd
+import matplotlib.pyplot as plt
 
-from bilby.core.prior import Uniform
+from bilby.core.prior import Constraint, Uniform
 from bilby.gw.conversion import convert_to_lal_binary_black_hole_parameters
 from bilby.gw.detector import get_empty_interferometer
-from bilby.gw.prior import BBHPriorDict
-from bilby.gw.source import lal_binary_black_hole
+from bilby.gw.prior import BNSPriorDict
+from bilby.gw.source import lal_binary_neutron_star
 from bilby.gw.utils import noise_weighted_inner_product
 from bilby.gw.waveform_generator import WaveformGenerator
 
@@ -24,6 +25,7 @@ class TF2Test(unittest.TestCase):
             minimum_frequency=20,
             maximum_frequency=1024,
             reference_frequency=20,
+            pn_tidal_order=-1
         )
 
         self.duration = 4
@@ -36,7 +38,7 @@ class TF2Test(unittest.TestCase):
         self.bilby_wfg = WaveformGenerator(
             duration=self.duration,
             sampling_frequency=self.sampling_frequency,
-            frequency_domain_source_model=lal_binary_black_hole,
+            frequency_domain_source_model=lal_binary_neutron_star,
             waveform_arguments=self.waveform_arguments,
             parameter_conversion=convert_to_lal_binary_black_hole_parameters,
         )
@@ -49,11 +51,13 @@ class TF2Test(unittest.TestCase):
         )
 
     def test_absolute_overlap(self):
-        priors = BBHPriorDict(aligned_spin=True)
+        priors = BNSPriorDict(aligned_spin=True)
         del priors["mass_1"], priors["mass_2"]
-        priors["total_mass"] = Uniform(5, 50)
+        priors["total_mass"] = Uniform(2, 50)
         priors["mass_ratio"] = Uniform(0.5, 1)
         priors["geocent_time"] = Uniform(-10, 10)
+        priors["mass_1"] = Constraint(1, 50)
+        priors["mass_2"] = Constraint(1, 50)
 
         n_samples = 100
         all_parameters = pd.DataFrame(priors.sample(n_samples))
@@ -77,4 +81,4 @@ class TF2Test(unittest.TestCase):
                 self.ifo.optimal_snr_squared(signal=gpu_strain) ** 0.5
             )
             overlaps.append(overlap)
-        self.assertTrue(min(np.abs(overlaps)) > 0.995)
+        self.assertTrue(min(np.abs(overlaps)) > 0.99)
