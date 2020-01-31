@@ -50,6 +50,8 @@ class CUPYGravitationalWaveTransient(Likelihood):
         if self.distance_marginalization:
             self._setup_distance_marginalization()
             priors["luminosity_distance"] = priors["luminosity_distance"].minimum
+        self.phase_marginalization = False
+        self.time_marginalization = False
 
     def _data_to_gpu(self):
         for ifo in self.interferometers:
@@ -187,3 +189,6 @@ class CUPYGravitationalWaveTransient(Likelihood):
             self.priors["luminosity_distance"].prob(self.distance_array)
         ) * (self.distance_array[1] - self.distance_array[0])
         self.distance_array = xp.asarray(self.distance_array)
+
+    def generate_posterior_sample_from_marginalized_likelihood(self):
+        return self.parameters.copy()

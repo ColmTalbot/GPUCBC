@@ -99,7 +99,6 @@ class TF2(object):
         amp = amp_0 * d_energy_d_flux ** 0.5 * orbital_speed
 
         # TODO: figure out where these numbers come from
-        # arbitrary_correction = 1 / 11848509962776.643 * 9095.58084408834 * 1.36810424e-36 * 1.0000000134074989
         arbitrary_correction = 1.0502335672580086e-45
         return amp * arbitrary_correction
 
