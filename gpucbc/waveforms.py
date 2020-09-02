@@ -44,8 +44,9 @@ class TF2(object):
         Dimensionless tidal deformability of the less massive object.
     """
 
-    def __init__(self, mass_1, mass_2, chi_1, chi_2, luminosity_distance,
-                 lambda_1=0, lambda_2=0):
+    def __init__(
+        self, mass_1, mass_2, chi_1, chi_2, luminosity_distance, lambda_1=0, lambda_2=0
+    ):
         self.mass_1 = mass_1
         self.mass_2 = mass_2
         self.chi_1 = chi_1
@@ -56,10 +57,8 @@ class TF2(object):
         self.lambda_1 = float(lambda_1)
         self.lambda_2 = float(lambda_2)
         self.param_dict = CreateDict()
-        ls.SimInspiralWaveformParamsInsertTidalLambda1(
-            self.param_dict, self.lambda_1)
-        ls.SimInspiralWaveformParamsInsertTidalLambda2(
-            self.param_dict, self.lambda_2)
+        ls.SimInspiralWaveformParamsInsertTidalLambda1(self.param_dict, self.lambda_1)
+        ls.SimInspiralWaveformParamsInsertTidalLambda2(self.param_dict, self.lambda_2)
 
         self.delta = (self.mass_1 - self.mass_2) / self.total_mass
         self.chis = (self.chi_1 + self.chi_2) / 2
@@ -77,15 +76,20 @@ class TF2(object):
         self.luminosity_distance = luminosity_distance / MEGA_PARSEC_SI
 
     def __call__(self, frequency_array, tc=0, phi_c=0):
-        hoff = self.amplitude(frequency_array) * xp.exp(
-            -1j * self.phase(frequency_array, phi_c=phi_c)
+        orbital_speed = self.orbital_speed(frequency_array=frequency_array)
+        hoff = self.amplitude(frequency_array, orbital_speed=orbital_speed) * xp.exp(
+            -1j * self.phase(frequency_array, phi_c=phi_c, orbital_speed=orbital_speed)
         )
         return hoff
 
-    def amplitude(self, frequency_array):
-        orbital_speed = (
-            np.pi * self.total_mass * SOLAR_RADIUS_IN_S * frequency_array
-        ) ** (1 / 3)
+    def orbital_speed(self, frequency_array):
+        return (np.pi * self.total_mass * SOLAR_RADIUS_IN_S * frequency_array) ** (
+            1 / 3
+        )
+
+    def amplitude(self, frequency_array, orbital_speed=None):
+        if orbital_speed is None:
+            orbital_speed = self.orbital_speed(frequency_array=frequency_array)
         amp_0 = (
             -4
             * self.mass_1
@@ -98,14 +102,11 @@ class TF2(object):
         d_energy_d_flux = 5 / 32 / self.symmetric_mass_ratio / orbital_speed ** 9
         amp = amp_0 * d_energy_d_flux ** 0.5 * orbital_speed
 
-        # TODO: figure out where these numbers come from
-        arbitrary_correction = 1.0502335672580086e-45
-        return amp * arbitrary_correction
+        return amp
 
-    def phase(self, frequency_array, phi_c=0):
-        orbital_speed = (
-            np.pi * self.total_mass * SOLAR_RADIUS_IN_S * frequency_array
-        ) ** (1 / 3)
+    def phase(self, frequency_array, phi_c=0, orbital_speed=None):
+        if orbital_speed is None:
+            orbital_speed = self.orbital_speed(frequency_array=frequency_array)
         phase_coefficients = ls.SimInspiralTaylorF2AlignedPhasing(
             self.mass_1, self.mass_2, self.chi_1, self.chi_2, self.param_dict
         )
@@ -348,11 +349,20 @@ def call_cupy_tf2(
 
     h_out_of_band = xp.zeros(int(xp.sum(~in_band)))
 
-    wf = TF2(mass_1, mass_2, chi_1, chi_2, lambda_1=lambda_1, lambda_2=lambda_2,
-             luminosity_distance=luminosity_distance)
+    wf = TF2(
+        mass_1,
+        mass_2,
+        chi_1,
+        chi_2,
+        lambda_1=lambda_1,
+        lambda_2=lambda_2,
+        luminosity_distance=luminosity_distance,
+    )
     strain = wf(frequency_array[in_band], phi_c=phase)
     h_plus = xp.hstack([h_out_of_band, strain]) * (1 + np.cos(theta_jn) ** 2) / 2
-    h_cross = xp.hstack([h_out_of_band, strain]) * xp.exp(-1j * np.pi / 2) * np.cos(theta_jn)
+    h_cross = (
+        xp.hstack([h_out_of_band, strain]) * xp.exp(-1j * np.pi / 2) * np.cos(theta_jn)
+    )
 
     return dict(plus=h_plus, cross=h_cross)
 
