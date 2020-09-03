@@ -59,6 +59,7 @@ class TF2(object):
         self.param_dict = CreateDict()
         ls.SimInspiralWaveformParamsInsertTidalLambda1(self.param_dict, self.lambda_1)
         ls.SimInspiralWaveformParamsInsertTidalLambda2(self.param_dict, self.lambda_2)
+        ls.SimInspiralSetQuadMonParamsFromLambdas(self.param_dict)
 
         self.delta = (self.mass_1 - self.mass_2) / self.total_mass
         self.chis = (self.chi_1 + self.chi_2) / 2
