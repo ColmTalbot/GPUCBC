@@ -61,19 +61,6 @@ class TF2(object):
         ls.SimInspiralWaveformParamsInsertTidalLambda2(self.param_dict, self.lambda_2)
         ls.SimInspiralSetQuadMonParamsFromLambdas(self.param_dict)
 
-        # self.delta = (self.mass_1 - self.mass_2) / self.total_mass
-        # self.chis = (self.chi_1 + self.chi_2) / 2
-        # self.chia = (self.chi_1 - self.chi_2) / 2
-        # self.chi_pn = (
-        #     self.mass_1 * self.chi_1 + self.mass_2 * self.chi_2
-        # ) / self.total_mass - 38 * self.symmetric_mass_ratio / 113 * (
-        #     self.chi_1 + self.chi_2
-        # )
-        # seta = np.sqrt(1.0 - 4.0 * self.symmetric_mass_ratio)
-        # mass_1 = 0.5 * (1.0 + seta)
-        # mass_2 = 0.5 * (1.0 - seta)
-        # self.chi = mass_1 ** 2 * self.chi_1 + mass_2 ** 2 * self.chi_2
-        # self.fisco = 6 ** (-1.5) / np.pi / self.total_mass
         self.luminosity_distance = luminosity_distance * MEGA_PARSEC_SI
 
     def __call__(self, frequency_array, tc=0, phi_c=0):
