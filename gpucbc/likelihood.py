@@ -2,10 +2,10 @@ import numpy as np
 
 try:
     import cupy as xp
-    from .cupy_utils import i0e
+    from .cupy_utils import i0e, logsumexp
 except ImportError:
     xp = np
-    from scipy.special import i0e
+    from scipy.special import i0e, logsumexp
 
 from bilby.core.likelihood import Likelihood
 
@@ -191,7 +191,7 @@ class CUPYGravitationalWaveTransient(Likelihood):
             log_l_array = -2 / self.duration * (
                 h_inner_h_array - 2 * xp.real(d_inner_h_array)
             )
-        log_l = xp.log(xp.sum(xp.exp(log_l_array) * self.distance_prior_array))
+        log_l = logsumexp(log_l_array, b=self.distance_prior_array)
         return log_l
 
     def phase_marginalized_likelihood(self, d_inner_h, h_inner_h):
