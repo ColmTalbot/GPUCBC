@@ -4,12 +4,11 @@ import unittest
 
 import numpy as np
 import pandas as pd
-import matplotlib.pyplot as plt
 
-from bilby.core.prior import Constraint, Uniform
-from bilby.gw.conversion import convert_to_lal_binary_black_hole_parameters
+from bilby.core.prior import Constraint, Uniform, Cosine, Sine
+from bilby.gw.conversion import convert_to_lal_binary_neutron_star_parameters
 from bilby.gw.detector import get_empty_interferometer
-from bilby.gw.prior import BNSPriorDict
+from bilby.gw.prior import BNSPriorDict, UniformSourceFrame, AlignedSpin
 from bilby.gw.source import lal_binary_neutron_star
 from bilby.gw.utils import noise_weighted_inner_product
 from bilby.gw.waveform_generator import WaveformGenerator
@@ -40,24 +39,33 @@ class TF2Test(unittest.TestCase):
             sampling_frequency=self.sampling_frequency,
             frequency_domain_source_model=lal_binary_neutron_star,
             waveform_arguments=self.waveform_arguments,
-            parameter_conversion=convert_to_lal_binary_black_hole_parameters,
+            parameter_conversion=convert_to_lal_binary_neutron_star_parameters,
         )
 
         self.gpu_wfg = TF2WFG(
             duration=self.duration,
             sampling_frequency=self.sampling_frequency,
             waveform_arguments=self.waveform_arguments,
-            parameter_conversion=convert_to_lal_binary_black_hole_parameters,
+            parameter_conversion=convert_to_lal_binary_neutron_star_parameters,
         )
 
     def test_absolute_overlap(self):
         priors = BNSPriorDict(aligned_spin=True)
-        del priors["mass_1"], priors["mass_2"]
-        priors["total_mass"] = Uniform(2, 50)
-        priors["mass_ratio"] = Uniform(0.5, 1)
+        priors["total_mass"] = Uniform(2, 100)
+        priors["mass_ratio"] = Uniform(name='mass_ratio', minimum=0.5, maximum=1)
+        priors["mass_1"] = Constraint(name='mass_1', minimum=1, maximum=50)
+        priors["mass_2"] = Constraint(name='mass_2', minimum=1, maximum=50)
+        priors["luminosity_distance"] = UniformSourceFrame(name='luminosity_distance', minimum=1e2, maximum=5e3)
+        priors["dec"] = Cosine(name='dec')
+        priors["ra"] = Uniform(name='ra', minimum=0, maximum=2 * np.pi, boundary='periodic')
+        priors["theta_jn"] = Sine(name='theta_jn')
+        priors["psi"] = Uniform(name='psi', minimum=0, maximum=np.pi, boundary='periodic')
+        priors["phase"] = Uniform(name='phase', minimum=0, maximum=2 * np.pi, boundary='periodic')
+        priors["chi_1"] = AlignedSpin(name='chi_1', a_prior=Uniform(minimum=0, maximum=1))
+        priors["chi_2"] = AlignedSpin(name='chi_2', a_prior=Uniform(minimum=0, maximum=1))
+        priors["lambda_1"] = Uniform(name='lambda_1', minimum=0, maximum=5000)
+        priors["lambda_2"] = Uniform(name='lambda_2', minimum=0, maximum=5000)
         priors["geocent_time"] = Uniform(-10, 10)
-        priors["mass_1"] = Constraint(1, 50)
-        priors["mass_2"] = Constraint(1, 50)
 
         n_samples = 100
         all_parameters = pd.DataFrame(priors.sample(n_samples))
