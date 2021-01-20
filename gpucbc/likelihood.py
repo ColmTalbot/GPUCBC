@@ -132,7 +132,7 @@ class CUPYGravitationalWaveTransient(Likelihood):
                 d_inner_h=d_inner_h, h_inner_h=h_inner_h
             )
         else:
-            log_l = - h_inner_h / 2 + xp.real(d_inner_h))
+            log_l = - h_inner_h / 2 + xp.real(d_inner_h)
         return float(log_l.real)
 
     def calculate_snrs(self, interferometer, waveform_polarizations):
