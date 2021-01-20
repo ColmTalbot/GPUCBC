@@ -2,7 +2,7 @@ import cupy
 import cupyx
 import numpy as np
 
-from .kernels import i0e_kernel
+from ._kernels import i0e_kernel
 
 
 def _kernel_array_wrapper(func):
