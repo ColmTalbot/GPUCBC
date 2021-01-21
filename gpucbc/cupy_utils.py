@@ -42,17 +42,11 @@ def logsumexp(a, axis=None, b=None, keepdims=False, return_sign=False):
     else:
         tmp = xp.exp(a - a_max)
 
-    if xp == np:
-        errstate = np.errstate
-    else:
-        errstate = cupyx.errstate
-    # suppress warnings about log of zero
-    with errstate(divide='ignore'):
-        s = xp.sum(tmp, axis=axis, keepdims=keepdims)
-        if return_sign:
-            sgn = xp.sign(s)
-            s *= sgn  # /= makes more sense but we need zero -> zero
-        out = xp.log(s)
+    s = xp.sum(tmp, axis=axis, keepdims=keepdims)
+    if return_sign:
+        sgn = xp.sign(s)
+        s *= sgn  # /= makes more sense but we need zero -> zero
+    out = xp.log(s)
 
     if not keepdims:
         a_max = xp.squeeze(a_max, axis=axis)
