@@ -45,6 +45,7 @@ class CUPYGravitationalWaveTransient(Likelihood):
         self._noise_log_l = np.nan
         self.psds = dict()
         self.strain = dict()
+        self.frequency_array = dict()
         self._data_to_gpu()
         if priors is None:
             self.priors = priors
@@ -67,7 +68,9 @@ class CUPYGravitationalWaveTransient(Likelihood):
             self.strain[ifo.name] = xp.asarray(
                 ifo.frequency_domain_strain[ifo.frequency_mask]
             )
-        self.frequency_array = xp.asarray(ifo.frequency_array[ifo.frequency_mask])
+            self.frequency_array[ifo.name] = xp.asarray(
+                ifo.frequency_array[ifo.frequency_mask]
+            )
         self.duration = ifo.strain_data.duration
 
     def __repr__(self):
@@ -132,7 +135,7 @@ class CUPYGravitationalWaveTransient(Likelihood):
                 d_inner_h=d_inner_h, h_inner_h=h_inner_h
             )
         else:
-            log_l = - h_inner_h / 2 + xp.real(d_inner_h))
+            log_l = - h_inner_h / 2 + xp.real(d_inner_h)
         return float(log_l.real)
 
     def calculate_snrs(self, interferometer, waveform_polarizations):
@@ -166,7 +169,7 @@ class CUPYGravitationalWaveTransient(Likelihood):
             )
         )
 
-        signal_ifo *= xp.exp(-2j * np.pi * time_delay * self.frequency_array)
+        signal_ifo *= xp.exp(-2j * np.pi * time_delay * self.frequency_array[name])
 
         d_inner_h = xp.sum(xp.conj(signal_ifo) * self.strain[name] / self.psds[name])
         h_inner_h = xp.sum(xp.abs(signal_ifo) ** 2 / self.psds[name])
