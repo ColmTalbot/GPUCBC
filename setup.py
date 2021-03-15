@@ -14,7 +14,7 @@ setuptools.setup(
     url="https://github.com/ColmTalbot/GPUCBC",
     packages=["gpucbc"],
     package_dir={"gpucbc": "gpucbc"},
-    install_requires=["numpy>=1.16", "astropy", "bilby<1.1"],
+    install_requires=["numpy>=1.16.5", "astropy", "bilby<1.1"],
     classifiers=[
         "Programming Language :: Python :: 3",
         "License :: OSI Approved :: MIT License",
