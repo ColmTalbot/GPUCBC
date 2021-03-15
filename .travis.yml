@@ -8,6 +8,7 @@ cache: pip
 install:
   - pip install "coverage<4.4" "pytest-cov<2.5" codeclimate-test-reporter
   - pip install --upgrade numpy pandas
+  - pip install lalsuite
   - pip install .
 
 script:
