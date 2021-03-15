@@ -1,3 +1,5 @@
+from collections import namedtuple
+
 import numpy as np
 
 try:
@@ -7,14 +9,21 @@ except ImportError:
 
 from astropy import constants
 
-from lal import CreateDict
-import lalsimulation as ls
 from bilby.gw.conversion import convert_to_lal_binary_neutron_star_parameters
 from bilby.core.utils import create_frequency_series
+
+from . import pn
 
 SOLAR_RADIUS_IN_M = constants.GM_sun.si.value / constants.c.si.value ** 2
 SOLAR_RADIUS_IN_S = constants.GM_sun.si.value / constants.c.si.value ** 3
 MEGA_PARSEC_SI = constants.pc.si.value * 1e6
+
+
+class Phasing(object):
+    def __init__(self, order=16):
+        self.v = np.zeros(order, dtype=float)
+        self.vlogv = np.zeros(order, dtype=float)
+        self.vlogvsq = np.zeros(order, dtype=float)
 
 
 class TF2(object):
@@ -44,24 +53,54 @@ class TF2(object):
         Dimensionless tidal deformability of the less massive object.
     """
 
+    phase_parameters = namedtuple(
+        "PhaseParameters",
+        [
+            "eta",
+            "chi_1",
+            "chi_2",
+            "m1_on_m",
+            "m2_on_m",
+            "qm_def_1",
+            "qm_def_2",
+            "lambda_1",
+            "lambda_2",
+        ],
+    )
+
     def __init__(
         self, mass_1, mass_2, chi_1, chi_2, luminosity_distance, lambda_1=0, lambda_2=0
     ):
+        self._phasing = Phasing()
         self.mass_1 = mass_1
         self.mass_2 = mass_2
         self.chi_1 = chi_1
         self.chi_2 = chi_2
         self.total_mass = mass_1 + mass_2
-        self.symmetric_mass_ratio = mass_1 * mass_2 / self.total_mass ** 2
+        self.eta = mass_1 * mass_2 / self.total_mass ** 2
 
         self.lambda_1 = float(lambda_1)
         self.lambda_2 = float(lambda_2)
-        self.param_dict = CreateDict()
-        ls.SimInspiralWaveformParamsInsertTidalLambda1(self.param_dict, self.lambda_1)
-        ls.SimInspiralWaveformParamsInsertTidalLambda2(self.param_dict, self.lambda_2)
-        ls.SimInspiralSetQuadMonParamsFromLambdas(self.param_dict)
+        self.quadmon_1 = eos_q_from_lambda(lambda_1)
+        self.quadmon_2 = eos_q_from_lambda(lambda_2)
 
         self.luminosity_distance = luminosity_distance * MEGA_PARSEC_SI
+
+        self.pn_phase_order = -1
+        self.pn_spin_order = -1
+        self.pn_tidal_order = -1
+
+        self.args = self.phase_parameters(
+            self.eta,
+            self.chi_1,
+            self.chi_2,
+            self.mass_1 / self.total_mass,
+            self.mass_2 / self.total_mass,
+            self.quadmon_1,
+            self.quadmon_2,
+            self.lambda_1,
+            self.lambda_2,
+        )
 
     def __call__(self, frequency_array, tc=0, phi_c=0):
         orbital_speed = self.orbital_speed(frequency_array=frequency_array)
@@ -87,17 +126,55 @@ class TF2(object):
             * SOLAR_RADIUS_IN_S
             * (np.pi / 12) ** 0.5
         )
-        d_energy_d_flux = 5 / 32 / self.symmetric_mass_ratio / orbital_speed ** 9
+        d_energy_d_flux = 5 / 32 / self.eta / orbital_speed ** 9
         amp = amp_0 * d_energy_d_flux ** 0.5 * orbital_speed
 
         return amp
 
+    def lal_phasing_coefficients(self):
+        from lal import CreateDict
+        from lalsimulation import (
+            SimInspiralWaveformParamsInsertTidalLambda1,
+            SimInspiralWaveformParamsInsertTidalLambda2,
+            SimInspiralSetQuadMonParamsFromLambdas,
+            SimInspiralTaylorF2AlignedPhasing,
+        )
+
+        param_dict = CreateDict()
+        SimInspiralWaveformParamsInsertTidalLambda1(param_dict, self.lambda_1)
+        SimInspiralWaveformParamsInsertTidalLambda2(param_dict, self.lambda_2)
+        SimInspiralSetQuadMonParamsFromLambdas(param_dict)
+        return SimInspiralTaylorF2AlignedPhasing(
+            self.mass_1, self.mass_2, self.chi_1, self.chi_2, param_dict
+        )
+
+    def phasing_coefficients(self):
+        scale = 3 / (128 * self.eta)
+        self._phasing.v[0] = pn.taylor_f2_phase_0(self.args)
+        self._phasing.v[1] = pn.taylor_f2_phase_1(self.args)
+        self._phasing.v[2] = pn.taylor_f2_phase_2(self.args)
+        self._phasing.v[3] = pn.taylor_f2_phase_3(self.args)
+        self._phasing.v[4] = pn.taylor_f2_phase_4(self.args)
+        self._phasing.v[5] = pn.taylor_f2_phase_5(self.args)
+        self._phasing.v[6] = pn.taylor_f2_phase_6(self.args)
+        self._phasing.v[7] = pn.taylor_f2_phase_7(self.args)
+        self._phasing.v[10] = pn.taylor_f2_phase_10(self.args)
+        self._phasing.v[12] = pn.taylor_f2_phase_12(self.args)
+        self._phasing.v[13] = pn.taylor_f2_phase_13(self.args)
+        self._phasing.v[14] = pn.taylor_f2_phase_14(self.args)
+        if self.pn_tidal_order > 14:
+            self._phasing.v[15] = pn.taylor_f2_phase_15(self.args)
+        self._phasing.vlogv[5] = pn.taylor_f2_phase_5l(self.args)
+        self._phasing.vlogv[6] = pn.taylor_f2_phase_6l(self.args)
+        self._phasing.v *= scale
+        self._phasing.vlogv *= scale
+        self._phasing.vlogvsq *= scale
+        return self._phasing
+
     def phase(self, frequency_array, phi_c=0, orbital_speed=None):
         if orbital_speed is None:
             orbital_speed = self.orbital_speed(frequency_array=frequency_array)
-        phase_coefficients = ls.SimInspiralTaylorF2AlignedPhasing(
-            self.mass_1, self.mass_2, self.chi_1, self.chi_2, self.param_dict
-        )
+        phase_coefficients = self.phasing_coefficients()
         phasing = xp.zeros_like(orbital_speed)
         cumulative_power_frequency = orbital_speed ** -5
         for ii in range(len(phase_coefficients.v)):
@@ -112,6 +189,16 @@ class TF2(object):
         phasing -= 2 * phi_c + np.pi / 4
 
         return phasing
+
+    @property
+    def pn_tidal_order(self):
+        return self._pn_tidal_order
+
+    @pn_tidal_order.setter
+    def pn_tidal_order(self, value):
+        if value == -1:
+            value = 14
+        self._pn_tidal_order = value
 
 
 class TF2_np(TF2):
@@ -187,3 +274,36 @@ class TF2WFG(object):
         parameters, _ = self.conversion(parameters.copy())
         parameters.update(self.waveform_arguments)
         return self.fdsm(self.frequency_array, **parameters)
+
+
+def eos_q_from_lambda(lamb, tolerance=0.5):
+    """
+    A translation of lalsimulation.SimInspiralEOSQfromLambda
+
+    Calculates the quadrupole monopole term using universal relations.
+    """
+    if isinstance(lamb, (float, int)):
+        if lamb < tolerance:
+            return 1
+        else:
+            log_lambda = np.log(lamb)
+            return np.exp(
+                0.194
+                + 0.0936 * log_lambda
+                + 0.0474 * log_lambda ** 2
+                - 0.00421 * log_lambda ** 3
+                + 0.000123 * log_lambda ** 4
+            )
+    else:
+        lamb = np.array(lamb, dtype=float)
+        quadmon = np.ones_like(lamb)
+        _mask = lamb >= tolerance
+        log_lambda = np.log(lamb[_mask])
+        quadmon[_mask] = np.exp(
+            0.194
+            + 0.0936 * log_lambda
+            + 0.0474 * log_lambda ** 2
+            - 0.00421 * log_lambda ** 3
+            + 0.000123 * log_lambda ** 4
+        )
+    return quadmon

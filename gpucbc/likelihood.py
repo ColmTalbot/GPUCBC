@@ -73,7 +73,7 @@ class CUPYGravitationalWaveTransient(Likelihood):
         )
 
     def noise_log_likelihood(self):
-        """ Calculates the real part of noise log-likelihood
+        """Calculates the real part of noise log-likelihood
 
         Returns
         -------
@@ -93,7 +93,7 @@ class CUPYGravitationalWaveTransient(Likelihood):
         return self._noise_log_l
 
     def log_likelihood_ratio(self):
-        """ Calculates the real part of log-likelihood value
+        """Calculates the real part of log-likelihood value
 
         Returns
         -------
