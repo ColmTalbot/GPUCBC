@@ -64,7 +64,7 @@ class TF2:
     """
 
     def __init__(
-        self, mass_1, mass_2, chi_1, chi_2, luminosity_distance, lambda_1=0, lambda_2=0
+        self, mass_1, mass_2, chi_1, chi_2, luminosity_distance, lambda_1=0, lambda_2=0, reference_frequency=60,
     ):
         self._phasing = Phasing()
         self.mass_1 = mass_1
@@ -73,6 +73,8 @@ class TF2:
         self.chi_2 = chi_2
         self.total_mass = mass_1 + mass_2
         self.eta = mass_1 * mass_2 / self.total_mass ** 2
+        self.reference_frequency = reference_frequency
+        self.ref_idx = np.argmin(abs(TF2._frequency_array - self.reference_frequency))
 
         self.lambda_1 = float(lambda_1)
         self.lambda_2 = float(lambda_2)
@@ -97,29 +99,32 @@ class TF2:
             self.lambda_2,
         )
 
-    def __call__(self, frequency_array, tc=0, phi_c=0):
-        orbital_speed = self.orbital_speed(frequency_array=frequency_array)
-        hoff = self.amplitude(frequency_array, orbital_speed=orbital_speed) * xp.exp(
-            -1j * self.phase(frequency_array, phi_c=phi_c, orbital_speed=orbital_speed)
+    def __call__(self, tc=0, phi_c=0):
+        hoff = self.amplitude() * xp.exp(
+            -1j * self.phase(phi_c=phi_c)
         )
+        hoff *= np.exp(-2j * np.pi * tc * (TF2._frequency_array - self.reference_frequency))
         return hoff
 
     _frequencies_cache = None
+    _frequency_array = None
     _all_frequencies_cache = dict()
 
-    def orbital_speed(self, frequency_array):
-        if TF2._frequencies_cache is None:
-            TF2._frequencies_cache = frequency_array ** (1 / 3)
-            TF2._all_frequencies_cache = dict()
-            TF2._all_frequencies_cache[1] = TF2._frequencies_cache
-        return (np.pi * self.total_mass * SOLAR_RADIUS_IN_S) ** (1 / 3)  # * self._frequencies_cache
-        # * frequency_array) ** (
-        #     1 / 3
-        # )
+    @classmethod
+    def update_cache(cls, frequency_array):
+        TF2._frequency_array = frequency_array
+        TF2._frequencies_cache = frequency_array ** (1 / 3)
+        TF2._all_frequencies_cache = dict()
+        for ii in range(-5, 16):
+            TF2._all_frequencies_cache[ii] = TF2._frequencies_cache ** ii
+        TF2._all_frequencies_cache["log"] = np.nan_to_num(np.log(TF2._frequencies_cache))
 
-    def amplitude(self, frequency_array, orbital_speed=None):
-        if orbital_speed is None:
-            orbital_speed = self.orbital_speed(frequency_array=frequency_array)
+    @property
+    def orbital_speed(self):
+        return (np.pi * self.total_mass * SOLAR_RADIUS_IN_S) ** (1 / 3)
+
+    def amplitude(self):
+        orbital_speed = self.orbital_speed
         amp_0 = (
             -4
             * self.mass_1
@@ -129,8 +134,6 @@ class TF2:
             * SOLAR_RADIUS_IN_S
             * (np.pi / 12) ** 0.5
         )
-        if 9 not in TF2._all_frequencies_cache:
-            TF2._all_frequencies_cache[9] = TF2._frequencies_cache ** 9
         d_energy_d_flux = 5 / 32 / self.eta / orbital_speed ** 9 / TF2._all_frequencies_cache[9]
         amp = amp_0 * d_energy_d_flux ** 0.5 * orbital_speed * TF2._all_frequencies_cache[1]
 
@@ -167,24 +170,18 @@ class TF2:
         self._phasing.v[12] = pn.taylor_f2_phase_12(self.args) * scale
         self._phasing.v[13] = pn.taylor_f2_phase_13(self.args) * scale
         self._phasing.v[14] = pn.taylor_f2_phase_14(self.args) * scale
-        if self.pn_tidal_order > 14:
-            self._phasing.v[15] = pn.taylor_f2_phase_15(self.args) * scale
+        self._phasing.v[15] = pn.taylor_f2_phase_15(self.args) * scale * (self.pn_tidal_order > 14)
         self._phasing.vlogv[5] = pn.taylor_f2_phase_5l(self.args) * scale
         self._phasing.vlogv[6] = pn.taylor_f2_phase_6l(self.args) * scale
         return self._phasing
 
-    def phase(self, frequency_array, phi_c=0, orbital_speed=None):
-        if orbital_speed is None:
-            orbital_speed = self.orbital_speed(frequency_array=frequency_array)
+    def phase(self, phi_c=0):
+        orbital_speed = self.orbital_speed
         log_orbital_speed = xp.log(orbital_speed)
         phase_coefficients = self.phasing_coefficients()
-        phasing = xp.zeros_like(TF2._frequencies_cache)
+        phasing = xp.zeros(TF2._frequencies_cache.shape)
         cumulative_power_frequency = orbital_speed ** -5
         for ii in range(len(phase_coefficients.v)):
-            if ii - 5 not in TF2._all_frequencies_cache:
-                TF2._all_frequencies_cache[ii - 5] = TF2._frequencies_cache ** (ii - 5)
-            if "log" not in TF2._all_frequencies_cache:
-                TF2._all_frequencies_cache["log"] = np.nan_to_num(np.log(TF2._frequencies_cache))
             phasing += phase_coefficients.v[ii] * cumulative_power_frequency * TF2._all_frequencies_cache[ii - 5]
             phasing += (
                 phase_coefficients.vlogv[ii]
@@ -194,6 +191,7 @@ class TF2:
             )
             cumulative_power_frequency *= orbital_speed
 
+        phasing -= phasing[self.ref_idx]
         phasing -= 2 * phi_c + np.pi / 4
 
         return phasing

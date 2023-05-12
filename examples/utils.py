@@ -2,9 +2,11 @@ from collections import namedtuple
 from functools import partial
 
 import corner
+import jax
 import matplotlib.pyplot as plt
 import numpy as np
 import numpyro.distributions as dist
+from bilby.core.prior import PriorDict, Normal, Uniform
 from bilby.core.utils import ra_dec_to_theta_phi, speed_of_light, theta_phi_to_ra_dec
 from bilby.gw.detector import InterferometerList
 from bilby_cython.time import greenwich_mean_sidereal_time
@@ -14,8 +16,11 @@ from jax.random import split, PRNGKey
 from jax import numpy as jnp
 from numpy.random import randint
 from numpyro.infer import hmc, NUTS, MCMC
+from scipy.integrate import cumulative_trapezoid
+from scipy.special import logsumexp
 
 gmst = greenwich_mean_sidereal_time(0.0)
+REFERENCE_FREQUENCY = 100
 
 
 def unit_normal_ln_pdf(xx: jnp.ndarray) -> jnp.ndarray:
@@ -277,23 +282,46 @@ def zenith_azimuth_to_ra_dec(zenith, azimuth):
     return ra, dec
 
 
+def quaternion_to_euler_angles(qq):
+    qq /= jnp.linalg.norm(qq, axis=0)
+    phi = jnp.arctan2(
+        (qq[2] * qq[3] - qq[0] * qq[1]),
+        qq[1] * qq[3] + qq[0] * qq[2],
+    )
+    theta = jnp.arcsin(qq[0]**2 - qq[1]**2 - qq[2]**2 + qq[3]**2)
+    psi = jnp.arctan2(
+        qq[2] * qq[3] + qq[0] * qq[1],
+        qq[1] * qq[3] - qq[0] * qq[2],
+    )
+    return phi, theta, psi
+
+
+def extract_sphere(xyz):
+    xyz /= jnp.linalg.norm(xyz, axis=0)
+    cos_zenith = xyz[2]
+    azimuth = jnp.arctan2(xyz[1], xyz[0])
+    return cos_zenith, azimuth
+
+
+@jax.jit
 def extract_extrinsic(sample):
-    delta_time = sample[-8]
-    phase_x = sample[-7]
-    phase_y = sample[-6]
-    phase = jnp.angle(phase_x + 1j * phase_y) + np.pi
-    cos_theta_jn = sample[-5]
-    cos_theta_jn = unit_normal_cdf(cos_theta_jn)
-    cos_zenith = sample[-4]
-    azimuth = sample[-3]
+    # delta_time = sample[-8]
+    # cos_zenith, azimuth = extract_sphere(sample[-7:-4])
+    delta_time = sample[-7]
+    cos_zenith, azimuth = extract_sphere(sample[-6:-3])
+    phase = 0
+    theta_jn, two_psi = extract_sphere(sample[-3:])
+    # phase, theta_jn, two_psi = quaternion_to_euler_angles(sample[-4:])
+    cos_theta_jn = jnp.cos(theta_jn + np.pi / 2)
+    phase += np.pi
+    psi = (two_psi + np.pi) / 2
     azimuth += np.pi * (cos_theta_jn < 0)
     ra, dec = zenith_azimuth_to_ra_dec(jnp.arccos(cos_zenith), azimuth)
-    psi_x = sample[-2]
-    psi_y = sample[-1]
-    psi = (jnp.angle(psi_x + 1j * psi_y) + np.pi) / 2
-    fp, fx = response(dec, ra, psi, detectors[0])
-    phase += 2 * np.pi * 100 * delta_time
-    phase -= jnp.angle((1 + cos_theta_jn ** 2) / 2 * fp - 1j * cos_theta_jn * fx)
+    # fp, fx = response(dec, ra, psi, detectors[0])
+    phase += 2 * np.pi * REFERENCE_FREQUENCY * delta_time
+    # phase -= np.pi / 2 * jnp.sign(cos_theta_jn)
+    # phase -= jnp.arctan2(-cos_theta_jn * fx, (1 + cos_theta_jn**2) / 2 * fp) % (2 * np.pi)
+    phase = phase % (2 * np.pi)
     return delta_time, phase, ra, dec, psi, cos_theta_jn
 
 
@@ -301,34 +329,53 @@ def generate_burst(sample, frequencies):
     amplitude = 10 ** sample[0]
     q_factor = sample[1]
     centre_frequency = sample[2]
-    _, phase, _, _, _, cos_theta_jn = extract_extrinsic(sample)
-    amplitude /= abs((1 + cos_theta_jn ** 2) / 2 - 1j * cos_theta_jn)
+    # delta_time, phase, _, _, _, cos_theta_jn = extract_extrinsic(sample)
+    delta_time, phase, _, _, _, cos_theta_jn = sample[-6:]
+    # amplitude /= abs((1 + cos_theta_jn ** 2) / 2 - 1j * cos_theta_jn)
     return morlet_gabor_wavelet(
         frequency_array=frequencies,
         amplitude=amplitude,
         q_factor=q_factor,
         centre_frequency=centre_frequency,
-        delta_time=0,
+        delta_time=delta_time,
         phase=phase,
         ellipticity=1,
     )["plus"]
 
 
 def generate_cbc(sample, frequencies):
-    q = unit_normal_cdf(sample[1])
+    # temp = (1 / symmetric_mass_ratio / 2 - 1)
+    #     return temp - (temp ** 2 - 1) ** 0.5
+    # eta = unit_normal_cdf(sample[1]) * 0.25
+    # eta = sample[1]
+    # _temp = (1 / eta / 2 - 1)
+    # q = _temp - (_temp**2 - 1)**0.5
+    q = sample[1]
+    # q = unit_normal_cdf(sample[1]) * 0.9 + 0.1
     m1 = sample[0] * (1 + q) ** 0.2 / q ** 0.6
     m2 = m1 * q
-    chi_1 = sample[2]
-    chi_2 = sample[3]
-    luminosity_distance = sample[4]
-    waveform = TF2(m1, m2, chi_1, chi_2, 1)(frequencies) / luminosity_distance
-    _, phase, _, _, _, cos_theta_jn = extract_extrinsic(sample)
-    waveform /= abs((1 + cos_theta_jn ** 2) / 2 - 1j * cos_theta_jn)
+    # chi_eff = (chi_1 + q * chi_2) / (1 + q)
+    # chi_m = (chi_1 - chi_2)
+    # chi_1 =
+    chi_eff = sample[2]
+    # chi_m = sample[3]
+    chi_1 = chi_eff
+    chi_2 = chi_eff
+    # chi_1 = sample[2]
+    # chi_2 = sample[3]
+    luminosity_distance = 1000 * sample[3]
+    # delta_time, phase, _, _, _, cos_theta_jn = extract_extrinsic(sample)
+    delta_time, phase, _, _, _, cos_theta_jn = sample[-6:]
+    waveform = TF2(m1, m2, chi_1, chi_2, luminosity_distance=luminosity_distance)(
+        phi_c=phase, tc=delta_time,
+    )
+    # waveform /= abs((1 + cos_theta_jn ** 2) / 2 - 1j * cos_theta_jn)
     return waveform
 
 
 def generate_waveform(sample, wfg, frequencies):
-    delta_time, phase, ra, dec, psi, cos_theta_jn = extract_extrinsic(sample)
+    # delta_time, phase, ra, dec, psi, cos_theta_jn = extract_extrinsic(sample)
+    ra, dec, psi, cos_theta_jn = sample[-4:]
     waveform = wfg(sample, frequencies)
     wf = jnp.asarray(
         [
@@ -343,9 +390,26 @@ def generate_waveform(sample, wfg, frequencies):
             for detector in detectors
         ]
     )
-    delays = delta_time + time_delay_geocentric(ra, dec)
+    delays = time_delay_geocentric(ra, dec)
     wf *= jnp.exp(-2j * np.pi * jnp.outer(delays, frequencies))
     return wf
+
+
+def extrinsic_priors():
+    priors = PriorDict()
+    priors["delta_time"] = Uniform(-0.05, 0.05)
+    priors["sky_x"] = Normal(0, 1)
+    priors["sky_y"] = Normal(0, 1)
+    priors["sky_z"] = Normal(0, 1)
+    priors["orientation_w"] = Normal(0, 1)
+    priors["orientation_x"] = Normal(0, 1)
+    priors["orientation_y"] = Normal(0, 1)
+    priors["orientation_z"] = Normal(0, 1)
+    return priors
+
+
+def extrinsic_ln_prior(mu):
+    return jnp.sum(unit_normal_ln_pdf(mu[-7:]))
 
 
 MHState = namedtuple("MHState", ["u", "rng_key", "accept_prob", "prob", "rr"])
@@ -354,9 +418,9 @@ MHState = namedtuple("MHState", ["u", "rng_key", "accept_prob", "prob", "rr"])
 class MetropolisHastings(hmc.MCMCKernel):
     sample_field = "u"
 
-    def __init__(self, potential_fn, step_size=0.1):
+    def __init__(self, potential_fn, step_size=0.1, **kwargs):
         self.potential_fn = potential_fn
-        self.step_size = step_size
+        self.step_size = step_size * jnp.minimum(domain, 1)
 
     def init(self, rng_key, num_warmup, init_params, model_args, model_kwargs):
         return MHState(init_params, rng_key, 0.0, -self.potential_fn(init_params), 0.0)
@@ -371,9 +435,9 @@ class MetropolisHastings(hmc.MCMCKernel):
         return MHState(u_new, rng_key, accept_prob, -self.potential_fn(u_new), rr)
 
 
-def ln_likelihood(sample, wfg, data, asd, duration):
+def ln_likelihood(sample, wfg, data, asd, duration, beta=1):
     wf = wfg(sample) / asd
-    norm = 4 / duration
+    norm = 4 * beta / duration
     d_inner_h = norm * jnp.sum(wf * data.conj())
     h_inner_h = norm * jnp.sum(jnp.abs(wf) ** 2)
     return -h_inner_h / 2 + jnp.real(d_inner_h)
@@ -396,10 +460,15 @@ def potential(mu, prior, like):
 
 
 def run_sampler(start, num_warmup, num_samples, ln_prior_fn, ln_likelihood_fn):
+    # kernel = MetropolisHastings(
     kernel = NUTS(
         potential_fn=partial(potential, prior=ln_prior_fn, like=ln_likelihood_fn),
         adapt_mass_matrix=True,
         dense_mass=True,
+        # adapt_step_size=False,
+        step_size=0.005,
+        # regularize_mass_matrix=False,
+        # target_accept_prob=0.5,
     )
     mcmc = MCMC(kernel, num_warmup=num_warmup, num_samples=num_samples)
     mcmc.run(
@@ -408,9 +477,29 @@ def run_sampler(start, num_warmup, num_samples, ln_prior_fn, ln_likelihood_fn):
     return mcmc
 
 
-def plot_corner(mcmc, labels):
+def plot_corner(mcmc, labels, truths=None):
     samples = mcmc.get_samples()
-    corner.corner(np.asarray(samples), labels=labels)
+    corner.corner(
+        np.asarray([samples[label.replace(" ", "_")] for label in labels]).T,
+        labels=labels,
+        truths=truths,
+    )
+    plt.savefig("corner.png")
+    plt.close()
+
+
+def extrinsic_corner(mcmc, truths=None):
+    samples = mcmc.get_samples()
+    extrinsic = np.array([extract_extrinsic(sample) for sample in samples])
+    extrinsic_labels = [
+        "$\\delta t_{c}$",
+        "$\\phi$",
+        "$\\alpha$",
+        "$\\delta$",
+        "$\\psi$",
+        "$\\cos\\theta_{jn}$",
+    ]
+    corner.corner(extrinsic, labels=extrinsic_labels, truths=np.array(extract_extrinsic(truths)))
     plt.savefig("corner.png")
     plt.close()
 
@@ -428,8 +517,23 @@ def set_data(ifos, generator, true_parameters):
     return data, asd
 
 
-ifos = InterferometerList(["H1", "L1", "V1", "K1"][:2])
+def compute_evidences(betas, all_lnls):
+    dbetas = betas[1:] - betas[:-1]
+    ln_ratios = logsumexp(dbetas[:, np.newaxis] * all_lnls[:-1], axis=-1) - np.log(all_lnls.shape[1])
+    ln_z = sum(ln_ratios)
+    mean_lnls = np.mean(all_lnls, axis=-1)
+    average_lnls = (mean_lnls[1:] + mean_lnls[:-1]) / 2
+    # print(ln_ratios, dbetas * average_lnls)
+    print(f"Stepping stone: {ln_z:.2f}, thermodynamic: {sum(dbetas * average_lnls):.2f}")
+    step_cumulative = np.cumsum(ln_ratios)
+    thermo_cumulative = cumulative_trapezoid(mean_lnls, betas)
+    # print(step_cumulative, thermo_cumulative)
+    return step_cumulative, thermo_cumulative
+
+
+ifos = InterferometerList(["H1", "L1", "V1", "K1"][:3])
 vertices = jnp.asarray([ifo.geometry.vertex for ifo in ifos])
+vertices -= vertices[0]
 delta_x = ifos[0].geometry.vertex - ifos[1].geometry.vertex
 rotation_matrix = euler_rotation(delta_x)
 midpoint = (ifos[0].geometry.vertex + ifos[1].geometry.vertex) / 2
