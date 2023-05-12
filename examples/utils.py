@@ -305,22 +305,16 @@ def extract_sphere(xyz):
 
 @jax.jit
 def extract_extrinsic(sample):
-    # delta_time = sample[-8]
-    # cos_zenith, azimuth = extract_sphere(sample[-7:-4])
     delta_time = sample[-7]
     cos_zenith, azimuth = extract_sphere(sample[-6:-3])
     phase = 0
     theta_jn, two_psi = extract_sphere(sample[-3:])
-    # phase, theta_jn, two_psi = quaternion_to_euler_angles(sample[-4:])
     cos_theta_jn = jnp.cos(theta_jn + np.pi / 2)
     phase += np.pi
     psi = (two_psi + np.pi) / 2
     azimuth += np.pi * (cos_theta_jn < 0)
     ra, dec = zenith_azimuth_to_ra_dec(jnp.arccos(cos_zenith), azimuth)
-    # fp, fx = response(dec, ra, psi, detectors[0])
     phase += 2 * np.pi * REFERENCE_FREQUENCY * delta_time
-    # phase -= np.pi / 2 * jnp.sign(cos_theta_jn)
-    # phase -= jnp.arctan2(-cos_theta_jn * fx, (1 + cos_theta_jn**2) / 2 * fp) % (2 * np.pi)
     phase = phase % (2 * np.pi)
     return delta_time, phase, ra, dec, psi, cos_theta_jn
 
@@ -329,9 +323,7 @@ def generate_burst(sample, frequencies):
     amplitude = 10 ** sample[0]
     q_factor = sample[1]
     centre_frequency = sample[2]
-    # delta_time, phase, _, _, _, cos_theta_jn = extract_extrinsic(sample)
     delta_time, phase, _, _, _, cos_theta_jn = sample[-6:]
-    # amplitude /= abs((1 + cos_theta_jn ** 2) / 2 - 1j * cos_theta_jn)
     return morlet_gabor_wavelet(
         frequency_array=frequencies,
         amplitude=amplitude,
@@ -344,37 +336,21 @@ def generate_burst(sample, frequencies):
 
 
 def generate_cbc(sample, frequencies):
-    # temp = (1 / symmetric_mass_ratio / 2 - 1)
-    #     return temp - (temp ** 2 - 1) ** 0.5
-    # eta = unit_normal_cdf(sample[1]) * 0.25
-    # eta = sample[1]
-    # _temp = (1 / eta / 2 - 1)
-    # q = _temp - (_temp**2 - 1)**0.5
     q = sample[1]
-    # q = unit_normal_cdf(sample[1]) * 0.9 + 0.1
     m1 = sample[0] * (1 + q) ** 0.2 / q ** 0.6
     m2 = m1 * q
-    # chi_eff = (chi_1 + q * chi_2) / (1 + q)
-    # chi_m = (chi_1 - chi_2)
-    # chi_1 =
     chi_eff = sample[2]
-    # chi_m = sample[3]
     chi_1 = chi_eff
     chi_2 = chi_eff
-    # chi_1 = sample[2]
-    # chi_2 = sample[3]
     luminosity_distance = 1000 * sample[3]
-    # delta_time, phase, _, _, _, cos_theta_jn = extract_extrinsic(sample)
     delta_time, phase, _, _, _, cos_theta_jn = sample[-6:]
     waveform = TF2(m1, m2, chi_1, chi_2, luminosity_distance=luminosity_distance)(
         phi_c=phase, tc=delta_time,
     )
-    # waveform /= abs((1 + cos_theta_jn ** 2) / 2 - 1j * cos_theta_jn)
     return waveform
 
 
 def generate_waveform(sample, wfg, frequencies):
-    # delta_time, phase, ra, dec, psi, cos_theta_jn = extract_extrinsic(sample)
     ra, dec, psi, cos_theta_jn = sample[-4:]
     waveform = wfg(sample, frequencies)
     wf = jnp.asarray(
@@ -460,15 +436,11 @@ def potential(mu, prior, like):
 
 
 def run_sampler(start, num_warmup, num_samples, ln_prior_fn, ln_likelihood_fn):
-    # kernel = MetropolisHastings(
     kernel = NUTS(
         potential_fn=partial(potential, prior=ln_prior_fn, like=ln_likelihood_fn),
         adapt_mass_matrix=True,
         dense_mass=True,
-        # adapt_step_size=False,
         step_size=0.005,
-        # regularize_mass_matrix=False,
-        # target_accept_prob=0.5,
     )
     mcmc = MCMC(kernel, num_warmup=num_warmup, num_samples=num_samples)
     mcmc.run(
