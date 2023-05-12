@@ -2,8 +2,10 @@ import numpy as np
 
 try:
     import cupy as xp
+    from .cupy_utils import i0e, logsumexp
 except ImportError:
     xp = np
+    from scipy.special import i0e, logsumexp
 
 from bilby.core.likelihood import Likelihood
 
@@ -15,6 +17,8 @@ class CUPYGravitationalWaveTransient(Likelihood):
         waveform_generator,
         priors=None,
         distance_marginalization=True,
+        phase_marginalization=True,
+        time_marginalization=False,
     ):
         """
 
@@ -41,16 +45,19 @@ class CUPYGravitationalWaveTransient(Likelihood):
         self._noise_log_l = np.nan
         self.psds = dict()
         self.strain = dict()
+        self.frequency_array = dict()
         self._data_to_gpu()
         if priors is None:
             self.priors = priors
         else:
             self.priors = priors.copy()
         self.distance_marginalization = distance_marginalization
+        self.phase_marginalization = phase_marginalization
         if self.distance_marginalization:
             self._setup_distance_marginalization()
             priors["luminosity_distance"] = priors["luminosity_distance"].minimum
-        self.phase_marginalization = False
+        if self.phase_marginalization:
+            priors["phase"] = 0.0
         self.time_marginalization = False
 
     def _data_to_gpu(self):
@@ -61,7 +68,9 @@ class CUPYGravitationalWaveTransient(Likelihood):
             self.strain[ifo.name] = xp.asarray(
                 ifo.frequency_domain_strain[ifo.frequency_mask]
             )
-        self.frequency_array = xp.asarray(ifo.frequency_array[ifo.frequency_mask])
+            self.frequency_array[ifo.name] = xp.asarray(
+                ifo.frequency_array[ifo.frequency_mask]
+            )
         self.duration = ifo.strain_data.duration
 
     def __repr__(self):
@@ -121,8 +130,12 @@ class CUPYGravitationalWaveTransient(Likelihood):
             log_l = self.distance_marglinalized_likelihood(
                 d_inner_h=d_inner_h, h_inner_h=h_inner_h
             )
+        elif self.phase_marginalization:
+            log_l = self.phase_marginalized_likelihood(
+                d_inner_h=d_inner_h, h_inner_h=h_inner_h
+            )
         else:
-            log_l = -2 / self.duration * (h_inner_h - 2 * xp.real(d_inner_h))
+            log_l = - h_inner_h / 2 + xp.real(d_inner_h)
         return float(log_l.real)
 
     def calculate_snrs(self, interferometer, waveform_polarizations):
@@ -156,27 +169,38 @@ class CUPYGravitationalWaveTransient(Likelihood):
             )
         )
 
-        signal_ifo *= xp.exp(-2j * np.pi * time_delay * self.frequency_array)
+        signal_ifo *= xp.exp(-2j * np.pi * time_delay * self.frequency_array[name])
 
         d_inner_h = xp.sum(xp.conj(signal_ifo) * self.strain[name] / self.psds[name])
         h_inner_h = xp.sum(xp.abs(signal_ifo) ** 2 / self.psds[name])
+        d_inner_h *= 4 / self.duration
+        h_inner_h *= 4 / self.duration
         return d_inner_h, h_inner_h
 
     def distance_marglinalized_likelihood(self, d_inner_h, h_inner_h):
-        log_l = (
-            -2
-            / self.duration
-            * xp.real(
-                h_inner_h
-                * self.parameters["luminosity_distance"] ** 2
-                / self.distance_array ** 2
-                - 2
-                * d_inner_h
-                * self.parameters["luminosity_distance"]
-                / self.distance_array
-            )
+        d_inner_h_array = (
+            d_inner_h
+            * self.parameters["luminosity_distance"]
+            / self.distance_array
         )
-        log_l = xp.log(xp.sum(xp.exp(log_l) * self.distance_prior_array))
+        h_inner_h_array = (
+            h_inner_h
+            * self.parameters["luminosity_distance"] ** 2
+            / self.distance_array ** 2
+        )
+        if self.phase_marginalization:
+            log_l_array = self.phase_marginalized_likelihood(
+                d_inner_h=d_inner_h_array, h_inner_h=h_inner_h_array
+            )
+        else:
+            log_l_array = - h_inner_h_array / 2 + xp.real(d_inner_h_array)
+        log_l = logsumexp(log_l_array, b=self.distance_prior_array)
+        return log_l
+
+    def phase_marginalized_likelihood(self, d_inner_h, h_inner_h):
+        d_inner_h = xp.abs(d_inner_h)
+        d_inner_h = xp.log(i0e(d_inner_h)) + d_inner_h
+        log_l = - h_inner_h / 2 + d_inner_h
         return log_l
 
     def _setup_distance_marginalization(self):
