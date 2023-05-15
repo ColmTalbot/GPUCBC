@@ -1,13 +1,12 @@
 import numpy as np
+from bilby.core.likelihood import Likelihood
 
 try:
     import cupy as xp
-    from .cupy_utils import i0e, logsumexp
+    from cupyx.special import i0e, logsumexp
 except ImportError:
     xp = np
     from scipy.special import i0e, logsumexp
-
-from bilby.core.likelihood import Likelihood
 
 
 class CUPYGravitationalWaveTransient(Likelihood):
@@ -82,7 +81,7 @@ class CUPYGravitationalWaveTransient(Likelihood):
         )
 
     def noise_log_likelihood(self):
-        """ Calculates the real part of noise log-likelihood
+        """Calculates the real part of noise log-likelihood
 
         Returns
         -------
@@ -102,7 +101,7 @@ class CUPYGravitationalWaveTransient(Likelihood):
         return self._noise_log_l
 
     def log_likelihood_ratio(self):
-        """ Calculates the real part of log-likelihood value
+        """Calculates the real part of log-likelihood value
 
         Returns
         -------
