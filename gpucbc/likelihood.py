@@ -1,12 +1,7 @@
 import numpy as np
 from bilby.core.likelihood import Likelihood
 
-try:
-    import cupy as xp
-    from cupyx.special import i0e, logsumexp
-except ImportError:
-    xp = np
-    from scipy.special import i0e, logsumexp
+from .backend import BACKEND as B
 
 
 class CUPYGravitationalWaveTransient(Likelihood):
@@ -61,24 +56,16 @@ class CUPYGravitationalWaveTransient(Likelihood):
 
     def _data_to_gpu(self):
         for ifo in self.interferometers:
-            self.psds[ifo.name] = xp.asarray(
+            self.psds[ifo.name] = B.np.asarray(
                 ifo.power_spectral_density_array[ifo.frequency_mask]
             )
-            self.strain[ifo.name] = xp.asarray(
+            self.strain[ifo.name] = B.np.asarray(
                 ifo.frequency_domain_strain[ifo.frequency_mask]
             )
-            self.frequency_array[ifo.name] = xp.asarray(
+            self.frequency_array[ifo.name] = B.np.asarray(
                 ifo.frequency_array[ifo.frequency_mask]
             )
         self.duration = ifo.strain_data.duration
-
-    def __repr__(self):
-        return (
-            self.__class__.__name__
-            + "(interferometers={},\n\twaveform_generator={})".format(
-                self.interferometers, self.waveform_generator
-            )
-        )
 
     def noise_log_likelihood(self):
         """Calculates the real part of noise log-likelihood
@@ -95,7 +82,7 @@ class CUPYGravitationalWaveTransient(Likelihood):
                 log_l -= (
                     2.0
                     / self.duration
-                    * xp.sum(xp.abs(self.strain[name]) ** 2 / self.psds[name])
+                    * (B.np.abs(self.strain[name]) ** 2 / self.psds[name]).sum()
                 )
             self._noise_log_l = float(log_l)
         return self._noise_log_l
@@ -134,29 +121,26 @@ class CUPYGravitationalWaveTransient(Likelihood):
                 d_inner_h=d_inner_h, h_inner_h=h_inner_h
             )
         else:
-            log_l = - h_inner_h / 2 + xp.real(d_inner_h)
+            log_l = - h_inner_h / 2 + d_inner_h
         return float(log_l.real)
 
     def calculate_snrs(self, interferometer, waveform_polarizations):
         name = interferometer.name
-        signal_ifo = xp.sum(
-            xp.vstack(
-                [
-                    waveform_polarizations[mode]
-                    * float(
-                        interferometer.antenna_response(
-                            self.parameters["ra"],
-                            self.parameters["dec"],
-                            self.parameters["geocent_time"],
-                            self.parameters["psi"],
-                            mode,
-                        )
+        signal_ifo = B.np.vstack(
+            [
+                waveform_polarizations[mode]
+                * float(
+                    interferometer.antenna_response(
+                        self.parameters["ra"],
+                        self.parameters["dec"],
+                        self.parameters["geocent_time"],
+                        self.parameters["psi"],
+                        mode,
                     )
-                    for mode in waveform_polarizations
-                ]
-            ),
-            axis=0,
-        )[interferometer.frequency_mask]
+                )
+                for mode in waveform_polarizations
+            ]
+        ).sum(axis=0)[interferometer.frequency_mask]
 
         time_delay = (
             self.parameters["geocent_time"]
@@ -168,10 +152,10 @@ class CUPYGravitationalWaveTransient(Likelihood):
             )
         )
 
-        signal_ifo *= xp.exp(-2j * np.pi * time_delay * self.frequency_array[name])
+        signal_ifo *= B.np.exp(-2j * np.pi * time_delay * self.frequency_array[name])
 
-        d_inner_h = xp.sum(xp.conj(signal_ifo) * self.strain[name] / self.psds[name])
-        h_inner_h = xp.sum(xp.abs(signal_ifo) ** 2 / self.psds[name])
+        d_inner_h = (signal_ifo.conj() * self.strain[name] / self.psds[name]).sum()
+        h_inner_h = (B.np.abs(signal_ifo) ** 2 / self.psds[name]).sum()
         d_inner_h *= 4 / self.duration
         h_inner_h *= 4 / self.duration
         return d_inner_h, h_inner_h
@@ -192,13 +176,13 @@ class CUPYGravitationalWaveTransient(Likelihood):
                 d_inner_h=d_inner_h_array, h_inner_h=h_inner_h_array
             )
         else:
-            log_l_array = - h_inner_h_array / 2 + xp.real(d_inner_h_array)
+            log_l_array = - h_inner_h_array / 2 + d_inner_h_array.real
         log_l = logsumexp(log_l_array, b=self.distance_prior_array)
         return log_l
 
     def phase_marginalized_likelihood(self, d_inner_h, h_inner_h):
-        d_inner_h = xp.abs(d_inner_h)
-        d_inner_h = xp.log(i0e(d_inner_h)) + d_inner_h
+        d_inner_h = B.np.abs(d_inner_h)
+        d_inner_h = B.np.log(B.special.i0e(d_inner_h)) + d_inner_h
         log_l = - h_inner_h / 2 + d_inner_h
         return log_l
 
@@ -208,10 +192,10 @@ class CUPYGravitationalWaveTransient(Likelihood):
             self.priors["luminosity_distance"].maximum,
             10000,
         )
-        self.distance_prior_array = xp.asarray(
+        self.distance_prior_array = B.np.asarray(
             self.priors["luminosity_distance"].prob(self.distance_array)
         ) * (self.distance_array[1] - self.distance_array[0])
-        self.distance_array = xp.asarray(self.distance_array)
+        self.distance_array = B.np.asarray(self.distance_array)
 
     def generate_posterior_sample_from_marginalized_likelihood(self):
         return self.parameters.copy()

@@ -1,0 +1,5 @@
+[report]
+show_missing = true
+
+[run]
+omit = gpucbc/_version.py,gpucbc/test/*

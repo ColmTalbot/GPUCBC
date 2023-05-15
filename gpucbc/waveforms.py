@@ -2,14 +2,11 @@ from collections import namedtuple
 
 import numpy as np
 from astropy import constants
+from attrs import define
 from bilby.gw.conversion import convert_to_lal_binary_neutron_star_parameters
 from bilby.core.utils import create_frequency_series
 
-try:
-    import cupy as xp
-except ImportError:
-    xp = np
-
+from .backend import BACKEND as B
 from . import pn
 
 SOLAR_RADIUS_IN_M = constants.GM_sun.si.value / constants.c.si.value ** 2
@@ -17,14 +14,27 @@ SOLAR_RADIUS_IN_S = constants.GM_sun.si.value / constants.c.si.value ** 3
 MEGA_PARSEC_SI = constants.pc.si.value * 1e6
 
 
-class Phasing(object):
+class Phasing:
     def __init__(self, order=16):
         self.v = np.zeros(order, dtype=float)
         self.vlogv = np.zeros(order, dtype=float)
         self.vlogvsq = np.zeros(order, dtype=float)
 
 
-class TF2(object):
+@define
+class PhaseParameters:
+    eta: float
+    chi_1: float
+    chi_2: float
+    m1_on_m: float
+    m2_on_m: float
+    qm_def_1: float
+    qm_def_2: float
+    lambda_1: float
+    lambda_2: float
+
+
+class TF2:
     """
     A copy of the TaylorF2 waveform.
 
@@ -51,21 +61,6 @@ class TF2(object):
         Dimensionless tidal deformability of the less massive object.
     """
 
-    phase_parameters = namedtuple(
-        "PhaseParameters",
-        [
-            "eta",
-            "chi_1",
-            "chi_2",
-            "m1_on_m",
-            "m2_on_m",
-            "qm_def_1",
-            "qm_def_2",
-            "lambda_1",
-            "lambda_2",
-        ],
-    )
-
     def __init__(
         self, mass_1, mass_2, chi_1, chi_2, luminosity_distance, lambda_1=0, lambda_2=0
     ):
@@ -88,7 +83,7 @@ class TF2(object):
         self.pn_spin_order = -1
         self.pn_tidal_order = -1
 
-        self.args = self.phase_parameters(
+        self.args = PhaseParameters(
             self.eta,
             self.chi_1,
             self.chi_2,
@@ -102,7 +97,7 @@ class TF2(object):
 
     def __call__(self, frequency_array, tc=0, phi_c=0):
         orbital_speed = self.orbital_speed(frequency_array=frequency_array)
-        hoff = self.amplitude(frequency_array, orbital_speed=orbital_speed) * xp.exp(
+        hoff = self.amplitude(frequency_array, orbital_speed=orbital_speed) * B.np.exp(
             -1j * self.phase(frequency_array, phi_c=phi_c, orbital_speed=orbital_speed)
         )
         return hoff
@@ -134,6 +129,7 @@ class TF2(object):
         from lalsimulation import (
             SimInspiralWaveformParamsInsertTidalLambda1,
             SimInspiralWaveformParamsInsertTidalLambda2,
+            SimInspiralWaveformParamsInsertPNTidalOrder,
             SimInspiralSetQuadMonParamsFromLambdas,
             SimInspiralTaylorF2AlignedPhasing,
         )
@@ -141,6 +137,7 @@ class TF2(object):
         param_dict = CreateDict()
         SimInspiralWaveformParamsInsertTidalLambda1(param_dict, self.lambda_1)
         SimInspiralWaveformParamsInsertTidalLambda2(param_dict, self.lambda_2)
+        SimInspiralWaveformParamsInsertPNTidalOrder(param_dict, self.pn_tidal_order)
         SimInspiralSetQuadMonParamsFromLambdas(param_dict)
         return SimInspiralTaylorF2AlignedPhasing(
             self.mass_1, self.mass_2, self.chi_1, self.chi_2, param_dict
@@ -148,18 +145,8 @@ class TF2(object):
 
     def phasing_coefficients(self):
         scale = 3 / (128 * self.eta)
-        self._phasing.v[0] = pn.taylor_f2_phase_0(self.args)
-        self._phasing.v[1] = pn.taylor_f2_phase_1(self.args)
-        self._phasing.v[2] = pn.taylor_f2_phase_2(self.args)
-        self._phasing.v[3] = pn.taylor_f2_phase_3(self.args)
-        self._phasing.v[4] = pn.taylor_f2_phase_4(self.args)
-        self._phasing.v[5] = pn.taylor_f2_phase_5(self.args)
-        self._phasing.v[6] = pn.taylor_f2_phase_6(self.args)
-        self._phasing.v[7] = pn.taylor_f2_phase_7(self.args)
-        self._phasing.v[10] = pn.taylor_f2_phase_10(self.args)
-        self._phasing.v[12] = pn.taylor_f2_phase_12(self.args)
-        self._phasing.v[13] = pn.taylor_f2_phase_13(self.args)
-        self._phasing.v[14] = pn.taylor_f2_phase_14(self.args)
+        for ii in range(15):
+            self._phasing.v[ii] = getattr(pn, f"taylor_f2_phase_{ii}")(self.args)
         if self.pn_tidal_order > 14:
             self._phasing.v[15] = pn.taylor_f2_phase_15(self.args)
         self._phasing.vlogv[5] = pn.taylor_f2_phase_5l(self.args)
@@ -173,9 +160,9 @@ class TF2(object):
         if orbital_speed is None:
             orbital_speed = self.orbital_speed(frequency_array=frequency_array)
         phase_coefficients = self.phasing_coefficients()
-        phasing = xp.zeros(orbital_speed.shape)
+        phasing = B.np.zeros(orbital_speed.shape)
         cumulative_power_frequency = orbital_speed ** -5
-        log_orbital_speed = xp.log(orbital_speed)
+        log_orbital_speed = B.np.log(orbital_speed)
         for ii in range(len(phase_coefficients.v)):
             phasing += phase_coefficients.v[ii] * cumulative_power_frequency
             phasing += (
@@ -226,10 +213,7 @@ def call_cupy_tf2(
     minimum_frequency = waveform_kwargs["minimum_frequency"]
 
     in_band = frequency_array >= minimum_frequency
-
-    frequency_array = xp.asarray(frequency_array)
-
-    h_out_of_band = xp.zeros(int(xp.sum(~in_band)))
+    frequency_array = B.np.asarray(frequency_array)
 
     wf = TF2(
         mass_1,
@@ -240,8 +224,10 @@ def call_cupy_tf2(
         lambda_2=lambda_2,
         luminosity_distance=luminosity_distance,
     )
+
     strain = wf(frequency_array[in_band], phi_c=phase)
-    strain = xp.hstack([h_out_of_band, strain])
+    h_out_of_band = B.np.zeros(len(frequency_array) - len(strain))
+    strain = B.np.hstack([h_out_of_band, strain])
     h_plus = strain * (1 + np.cos(theta_jn) ** 2) / 2
     h_cross = -1j * strain * np.cos(theta_jn)
 
@@ -261,7 +247,7 @@ class TF2WFG(object):
             waveform_arguments = dict(minimum_frequency=10)
         self.fdsm = frequency_domain_source_model
         self.waveform_arguments = waveform_arguments
-        self.frequency_array = xp.asarray(
+        self.frequency_array = B.np.asarray(
             create_frequency_series(
                 duration=duration, sampling_frequency=sampling_frequency
             )
@@ -282,7 +268,7 @@ def eos_q_from_lambda(lamb, tolerance=0.5):
     """
 
     def worker(log_lambda):
-        return np.exp(
+        return B.np.exp(
             0.194
             + 0.0936 * log_lambda
             + 0.0474 * log_lambda ** 2
