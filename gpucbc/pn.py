@@ -1,5 +1,7 @@
 import numpy as np
 
+from .backend import BACKEND as B
+
 PI = np.pi
 
 
@@ -135,7 +137,7 @@ def taylor_f2_phase_6(args):
         + args.eta * (-15737765635 / 3048192 + 2255 / 12 * PI ** 2)
         + args.eta ** 2 * 76055 / 1728
         - args.eta ** 3 * 127825 / 1296
-        + taylor_f2_phase_6l(args) * np.log(4)
+        + taylor_f2_phase_6l(args) * B.np.log(4)
     )
     phase += (32675 / 112 + 5575 / 18 * args.eta) * args.eta * args.chi_1 * args.chi_2
     for m_on_m, chi, qm_def in zip(

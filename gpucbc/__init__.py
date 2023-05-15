@@ -1,25 +1,16 @@
-from . import likelihood, waveforms
+from . import likelihood, pn, waveforms
+from .backend import Backend
 
 
-def disable_cupy():
-    import numpy
-    from scipy.special import i0e
-    likelihood.xp = numpy
-    likelihood.i0e = i0e
-    waveforms.xp = numpy
+def set_backend(numpy):
 
-
-def enable_cupy():
-    try:
-        import cupy
-        from .cupy_utils import i0e
-        likelihood.xp = cupy
-        likelihood.i0e = i0e
-        waveforms.xp = cupy
-    except ImportError:
-        print("Cannot import cupy")
-        disable_cupy()
-
-
-enable_cupy()
-
+    scipy = dict(
+        numpy="scipy",
+        cupy="cupyx.scipy",
+        jax="jax.scipy",
+    ).get(numpy, None)
+    numpy = dict(jax="jax.numpy").get(numpy, numpy)
+    BACKEND = Backend(numpy=numpy, scipy=scipy)
+    likelihood.BACKEND = BACKEND
+    pn.BACKEND = BACKEND
+    waveforms.BACKEND = BACKEND

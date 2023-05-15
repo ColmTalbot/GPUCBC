@@ -39,3 +39,6 @@ namespaces = false
 
 [tool.setuptools_scm]
 write_to = "gpucbc/_version.py"
+
+[tool.pytest.ini_options]
+addopts = "--cov gpucbc --cov-report term-missing"

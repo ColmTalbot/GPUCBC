@@ -1,6 +1,8 @@
 #!/usr/bin/env python3
 
 import unittest
+import pytest
+from parameterized import parameterized
 
 import numpy as np
 import pandas as pd
@@ -15,6 +17,7 @@ from bilby.gw.source import lal_binary_neutron_star
 from bilby.gw.utils import noise_weighted_inner_product
 from bilby.gw.waveform_generator import WaveformGenerator
 
+from gpucbc import set_backend
 from gpucbc.waveforms import TF2WFG, TF2
 
 
@@ -51,7 +54,10 @@ class TF2Test(unittest.TestCase):
             parameter_conversion=convert_to_lal_binary_neutron_star_parameters,
         )
 
-    def test_native_phasing(self):
+    @parameterized.expand(["numpy", "jax", "cupy"])
+    def test_native_phasing(self, backend):
+        pytest.importorskip(backend)
+        set_backend(backend)
         priors = PriorDict()
         priors["mass_1"] = Uniform(1, 100)
         priors["mass_2"] = Uniform(1, 100)
@@ -66,21 +72,21 @@ class TF2Test(unittest.TestCase):
         priors["luminosity_distance"] = Uniform(10, 200)
 
         wf = TF2(**priors.sample())
+        TF2.pn_tidal_order = 15
         lal_phasing = wf._lal_phasing_coefficients()
         my_phasing = wf.phasing_coefficients()
         self.assertLess(max(abs(lal_phasing.v - my_phasing.v)), 1e-8)
         self.assertLess(max(abs(lal_phasing.vlogv - my_phasing.vlogv)), 1e-8)
         self.assertLess(max(abs(lal_phasing.vlogvsq - my_phasing.vlogvsq)), 1e-8)
 
-    def test_absolute_overlap(self):
+    @parameterized.expand(["numpy", "jax", "cupy"])
+    def test_absolute_overlap(self, backend):
+        pytest.importorskip(backend)
+        set_backend(backend)
         np.random.seed(42)
         priors = BNSPriorDict(aligned_spin=True)
         priors["mass_1"] = Uniform(1, 100)
         priors["mass_2"] = Uniform(1, 100)
-        # priors["total_mass"] = Uniform(2, 100)
-        # priors["mass_ratio"] = Uniform(name="mass_ratio", minimum=0.5, maximum=1)
-        # priors["mass_1"] = Constraint(name="mass_1", minimum=1, maximum=50)
-        # priors["mass_2"] = Constraint(name="mass_2", minimum=1, maximum=50)
         del priors["mass_ratio"], priors["chirp_mass"]
         priors["luminosity_distance"] = UniformSourceFrame(
             name="luminosity_distance", minimum=1e2, maximum=5e3
@@ -104,8 +110,7 @@ class TF2Test(unittest.TestCase):
         )
         priors["lambda_1"] = Uniform(name="lambda_1", minimum=0, maximum=5000)
         priors["lambda_2"] = Uniform(name="lambda_2", minimum=0, maximum=5000)
-        priors["geocent_time"] = 0
-        # priors["geocent_time"] = Uniform(-10, 10)
+        priors["geocent_time"] = Uniform(-10, 10)
 
         n_samples = 100
         all_parameters = pd.DataFrame(priors.sample(n_samples))
@@ -164,12 +169,5 @@ class TF2Test(unittest.TestCase):
                 / self.ifo.optimal_snr_squared(signal=bilby_strain) ** 0.5
                 / self.ifo.optimal_snr_squared(signal=gpu_strain) ** 0.5
             )
-            # print(self.ifo.optimal_snr_squared(signal=bilby_strain) ** 0.5, self.ifo.optimal_snr_squared(signal=gpu_strain) ** 0.5)
-            # print(np.max(abs(
-            #     np.fft.fft(bilby_strain[:-1] * gpu_strain.conj().real[:-1]) / self.ifo.power_spectral_density_array[:-1]
-            #     / self.ifo.optimal_snr_squared(signal=bilby_strain) ** 0.5
-            #     / self.ifo.optimal_snr_squared(signal=gpu_strain) ** 0.5
-            # )))
             overlaps.append(overlap)
-        print(overlaps)
         self.assertTrue(min(np.abs(overlaps)) > 0.99)
