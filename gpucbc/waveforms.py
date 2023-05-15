@@ -1,16 +1,14 @@
 from collections import namedtuple
 
 import numpy as np
+from astropy import constants
+from bilby.gw.conversion import convert_to_lal_binary_neutron_star_parameters
+from bilby.core.utils import create_frequency_series
 
 try:
     import cupy as xp
 except ImportError:
     xp = np
-
-from astropy import constants
-
-from bilby.gw.conversion import convert_to_lal_binary_neutron_star_parameters
-from bilby.core.utils import create_frequency_series
 
 from . import pn
 
@@ -131,7 +129,7 @@ class TF2(object):
 
         return amp
 
-    def lal_phasing_coefficients(self):
+    def _lal_phasing_coefficients(self):
         from lal import CreateDict
         from lalsimulation import (
             SimInspiralWaveformParamsInsertTidalLambda1,
@@ -175,14 +173,15 @@ class TF2(object):
         if orbital_speed is None:
             orbital_speed = self.orbital_speed(frequency_array=frequency_array)
         phase_coefficients = self.phasing_coefficients()
-        phasing = xp.zeros_like(orbital_speed)
+        phasing = xp.zeros(orbital_speed.shape)
         cumulative_power_frequency = orbital_speed ** -5
+        log_orbital_speed = xp.log(orbital_speed)
         for ii in range(len(phase_coefficients.v)):
             phasing += phase_coefficients.v[ii] * cumulative_power_frequency
             phasing += (
                 phase_coefficients.vlogv[ii]
                 * cumulative_power_frequency
-                * xp.log(orbital_speed)
+                * log_orbital_speed
             )
             cumulative_power_frequency *= orbital_speed
 
@@ -242,10 +241,9 @@ def call_cupy_tf2(
         luminosity_distance=luminosity_distance,
     )
     strain = wf(frequency_array[in_band], phi_c=phase)
-    h_plus = xp.hstack([h_out_of_band, strain]) * (1 + np.cos(theta_jn) ** 2) / 2
-    h_cross = (
-        xp.hstack([h_out_of_band, strain]) * xp.exp(-1j * np.pi / 2) * np.cos(theta_jn)
-    )
+    strain = xp.hstack([h_out_of_band, strain])
+    h_plus = strain * (1 + np.cos(theta_jn) ** 2) / 2
+    h_cross = -1j * strain * np.cos(theta_jn)
 
     return dict(plus=h_plus, cross=h_cross)
 
@@ -282,28 +280,26 @@ def eos_q_from_lambda(lamb, tolerance=0.5):
 
     Calculates the quadrupole monopole term using universal relations.
     """
-    if isinstance(lamb, (float, int)):
-        if lamb < tolerance:
-            return 1
-        else:
-            log_lambda = np.log(lamb)
-            return np.exp(
-                0.194
-                + 0.0936 * log_lambda
-                + 0.0474 * log_lambda ** 2
-                - 0.00421 * log_lambda ** 3
-                + 0.000123 * log_lambda ** 4
-            )
-    else:
-        lamb = np.array(lamb, dtype=float)
-        quadmon = np.ones_like(lamb)
-        _mask = lamb >= tolerance
-        log_lambda = np.log(lamb[_mask])
-        quadmon[_mask] = np.exp(
+
+    def worker(log_lambda):
+        return np.exp(
             0.194
             + 0.0936 * log_lambda
             + 0.0474 * log_lambda ** 2
             - 0.00421 * log_lambda ** 3
             + 0.000123 * log_lambda ** 4
         )
+
+    if isinstance(lamb, (float, int)):
+        if lamb < tolerance:
+            return 1
+        else:
+            log_lambda = np.log(lamb)
+            return worker(log_lambda)
+    else:
+        lamb = np.array(lamb, dtype=float)
+        quadmon = np.ones(lamb.shape)
+        _mask = lamb >= tolerance
+        log_lambda = np.log(lamb[_mask])
+        quadmon[_mask] = worker(log_lambda)
     return quadmon

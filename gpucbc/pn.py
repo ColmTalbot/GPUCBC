@@ -190,7 +190,7 @@ def taylor_f2_phase_10(args):
     for lambda_, m_on_m in zip(
         [args.lambda_1, args.lambda_2], [args.m1_on_m, args.m2_on_m]
     ):
-        phase += (-288 + 264 * m_on_m) * m_on_m ** 4 * lambda_
+        phase += 24 * (-12 + 11 * m_on_m) * m_on_m ** 4 * lambda_
     return phase
 
 
@@ -232,14 +232,14 @@ def taylor_f2_phase_14(args):
         phase += (
             -(m_on_m ** 4)
             * lambda_
-            * 24
+            * 5
             * (
-                39927845 / 508032
-                - 480043345 / 9144576 * m_on_m
-                + 9860575 / 127008 * m_on_m ** 2
-                - 421821905 / 2286144 * m_on_m ** 3
-                + 4359700 / 35721 * m_on_m ** 4
-                - 10578445 / 285768 * m_on_m ** 5
+                193986935 / 571536
+                - 14415613 / 381024 * m_on_m
+                - 57859 / 378 * m_on_m**2
+                - 209495 / 1512 * m_on_m**3
+                + 965 / 54 * m_on_m**4
+                - 4 * m_on_m**5
             )
         )
     return phase
@@ -256,7 +256,7 @@ def taylor_f2_phase_15(args):
             / 28
             * PI
             * lambda_
-            * (27719 - 22127 * m_on_m + 7022 * m_on_m ** 2 - 10232 * m_on_m ** 3)
+            * (27719 - 22415 * m_on_m + 7598 * m_on_m ** 2 - 10520 * m_on_m ** 3)
         )
     return phase
 

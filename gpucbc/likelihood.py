@@ -1,13 +1,12 @@
 import numpy as np
+from bilby.core.likelihood import Likelihood
 
 try:
     import cupy as xp
-    from .cupy_utils import i0e, logsumexp
+    from cupyx.special import i0e, logsumexp
 except ImportError:
     xp = np
     from scipy.special import i0e, logsumexp
-
-from bilby.core.likelihood import Likelihood
 
 
 class CUPYGravitationalWaveTransient(Likelihood):
