@@ -23,14 +23,12 @@ jobs:
         conda config --add channels conda-forge
     - name: Install dependencies
       run: |
-        conda install numpy astropy bilby python-lal python-lalsimulation
-    - name: Install the package
-      run: |
         conda update pip setuptools
+        conda install numpy astropy bilby python-lal python-lalsimulation
+        conda install pytest-cov
         pip install .
     - name: Test with pytest
       run: |
-        conda install pytest-cov
         pytest --cov=gpucbc -ra --color yes --cov-report=xml --junitxml=pytest.xml
     - name: Publish coverage to Codecov
       uses: codecov/codecov-action@v1.2.1
