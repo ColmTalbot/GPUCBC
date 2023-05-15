@@ -213,10 +213,7 @@ def call_cupy_tf2(
     minimum_frequency = waveform_kwargs["minimum_frequency"]
 
     in_band = frequency_array >= minimum_frequency
-
     frequency_array = B.np.asarray(frequency_array)
-
-    h_out_of_band = B.np.zeros(B.np.sum(~in_band))
 
     wf = TF2(
         mass_1,
@@ -227,7 +224,9 @@ def call_cupy_tf2(
         lambda_2=lambda_2,
         luminosity_distance=luminosity_distance,
     )
+
     strain = wf(frequency_array[in_band], phi_c=phase)
+    h_out_of_band = B.np.zeros(len(frequency_array) - len(strain))
     strain = B.np.hstack([h_out_of_band, strain])
     h_plus = strain * (1 + np.cos(theta_jn) ** 2) / 2
     h_cross = -1j * strain * np.cos(theta_jn)

@@ -1,6 +1,9 @@
 from . import backend, likelihood, pn, waveforms
 
 
+from ._version import __version__
+
+
 def set_backend(numpy):
 
     scipy = dict(
