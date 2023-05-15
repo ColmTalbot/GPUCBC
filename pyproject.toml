@@ -1,0 +1,41 @@
+[build-system]
+requires = [
+    "setuptools>=42",
+    "setuptools_scm[toml]>=3.4.3",
+    "wheel",
+]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "gpucbc"
+authors = [
+    {name = "Colm Talbot", email = "colm.talbot@ligo.org"}
+]
+description = "GPU enabled CBC parameter estimation"
+license = {text = "MIT"}
+classifiers = [
+    "License :: OSI Approved :: MIT License",
+    "Natural Language :: English",
+    "Programming Language :: Python :: 3",
+    "Operating System :: OS Independent",
+    "Topic :: Scientific/Engineering",
+    "Intended Audience :: Science/Research",
+]
+dependencies = ["numpy >= 1.16.5", "scipy", "astropy", "bilby >= 2.0"]
+readme = {file = "README.md", content-type = "text/markdown"}
+dynamic = ["version"]
+
+[project.optional-dependencies]
+test = ["pytest", "pytest-cov", "lalsuite"]
+
+[project.urls]
+homepage = "https://github.com/ColmTalbot/GPUCBC"
+
+[tool.setuptools.package-data]
+"*" = ["README.md", "LICENSE"]
+
+[tool.setuptools.packages.find]
+namespaces = false
+
+[tool.setuptools_scm]
+write_to = "gpucbc/_version.py"
