@@ -1,5 +1,4 @@
-from . import likelihood, pn, waveforms
-from .backend import Backend
+from . import backend, likelihood, pn, waveforms
 
 
 def set_backend(numpy):
@@ -10,7 +9,8 @@ def set_backend(numpy):
         jax="jax.scipy",
     ).get(numpy, None)
     numpy = dict(jax="jax.numpy").get(numpy, numpy)
-    BACKEND = Backend(numpy=numpy, scipy=scipy)
-    likelihood.BACKEND = BACKEND
-    pn.BACKEND = BACKEND
-    waveforms.BACKEND = BACKEND
+    BACKEND = backend.Backend(numpy=numpy, scipy=scipy)
+    backend.BACKEND = BACKEND
+    likelihood.B = BACKEND
+    pn.B = BACKEND
+    waveforms.B = BACKEND

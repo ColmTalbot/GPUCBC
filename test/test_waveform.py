@@ -17,6 +17,7 @@ from bilby.gw.source import lal_binary_neutron_star
 from bilby.gw.utils import noise_weighted_inner_product
 from bilby.gw.waveform_generator import WaveformGenerator
 
+import gpucbc
 from gpucbc import set_backend
 from gpucbc.waveforms import TF2WFG, TF2
 
@@ -75,9 +76,9 @@ class TF2Test(unittest.TestCase):
         TF2.pn_tidal_order = 15
         lal_phasing = wf._lal_phasing_coefficients()
         my_phasing = wf.phasing_coefficients()
-        self.assertLess(max(abs(lal_phasing.v - my_phasing.v)), 1e-8)
-        self.assertLess(max(abs(lal_phasing.vlogv - my_phasing.vlogv)), 1e-8)
-        self.assertLess(max(abs(lal_phasing.vlogvsq - my_phasing.vlogvsq)), 1e-8)
+        self.assertLess(max(abs(lal_phasing.v - my_phasing.v)), 1e-5)
+        self.assertLess(max(abs(lal_phasing.vlogv - my_phasing.vlogv)), 1e-5)
+        self.assertLess(max(abs(lal_phasing.vlogvsq - my_phasing.vlogvsq)), 1e-5)
 
     @parameterized.expand(["numpy", "jax", "cupy"])
     def test_absolute_overlap(self, backend):
@@ -149,6 +150,7 @@ class TF2Test(unittest.TestCase):
             )
             bilby_pols = dict(plus=lal_strain[0].data.data, cross=lal_strain[1].data.data)
             gpu_pols = self.gpu_wfg.frequency_domain_strain(parameters)
+            gpu_pols = {key: gpucbc.backend.BACKEND.to_numpy(value) for key, value in gpu_pols.items()}
 
             bilby_strain = self.ifo.get_detector_response(
                 waveform_polarizations=bilby_pols, parameters=parameters

@@ -21,7 +21,7 @@ classifiers = [
     "Topic :: Scientific/Engineering",
     "Intended Audience :: Science/Research",
 ]
-dependencies = ["numpy >= 1.16.5", "scipy", "astropy", "bilby >= 2.0"]
+dependencies = ["attrs", "numpy >= 1.16.5", "scipy", "astropy", "bilby >= 2.0"]
 readme = {file = "README.md", content-type = "text/markdown"}
 dynamic = ["version"]
 

@@ -10,8 +10,8 @@ class TestBackend(unittest.TestCase):
 
     def test_setting_jax(self):
         gpucbc.set_backend("jax")
-        self.assertEqual(gpucbc.pn.BACKEND.np, jnp)
-        self.assertEqual(gpucbc.pn.BACKEND.special, jsp)
+        self.assertEqual(gpucbc.pn.B.np, jnp)
+        self.assertEqual(gpucbc.pn.B.special, jsp)
 
     def test_unknown_backend_raises_error(self):
         with self.assertRaises(ImportError):
@@ -19,5 +19,5 @@ class TestBackend(unittest.TestCase):
 
     def test_no_scipy_backend(self):
         gpucbc.set_backend("bilby")
-        self.assertEqual(gpucbc.pn.BACKEND.np, bilby)
-        self.assertEqual(gpucbc.pn.BACKEND.special, None)
+        self.assertEqual(gpucbc.pn.B.np, bilby)
+        self.assertEqual(gpucbc.pn.B.special, None)

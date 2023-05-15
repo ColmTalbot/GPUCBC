@@ -26,7 +26,7 @@ jobs:
         conda update pip setuptools
         conda install numpy astropy bilby python-lal python-lalsimulation
         conda install jax
-        conda install pytest-cov
+        conda install pytest-cov parameterized
         pip install .
     - name: Test with pytest
       run: |
